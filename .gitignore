@@ -11,3 +11,4 @@ __pycache__/
 .DS_Store
 .lead_screenshots/
 lead_screenshots/
+*.tsbuildinfo

@@ -380,17 +380,24 @@ export default function LeadDetailPage() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => quick("contacted")}
-            className="rounded-lg bg-slate-200 px-3 py-2 text-sm"
+            onClick={() => quick("start")}
+            className="rounded-lg bg-indigo-100 px-3 py-2 text-sm font-semibold text-indigo-800"
           >
-            סמנתי כהתקשרתי
+            💬 בתהליך
           </button>
           <button
             type="button"
-            onClick={() => quick("hot")}
-            className="rounded-lg bg-orange-200 px-3 py-2 text-sm"
+            onClick={() => quick("interested")}
+            className="rounded-lg bg-orange-200 px-3 py-2 text-sm font-semibold text-orange-900"
           >
-            לקוח חם
+            🔥 מתעניין
+          </button>
+          <button
+            type="button"
+            onClick={() => quick("not_interested")}
+            className="rounded-lg bg-slate-200 px-3 py-2 text-sm font-semibold"
+          >
+            ❌ לא מעוניין
           </button>
         </div>
         <div>
@@ -400,11 +407,13 @@ export default function LeadDetailPage() {
             value={status}
             onChange={(e) => setStatus(e.target.value)}
           >
-            {["new", "contacted", "interested", "follow_up", "closed", "not_relevant"].map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
+            <option value="new">🆕 חדש</option>
+            <option value="in_progress">💬 בתהליך</option>
+            <option value="interested">🔥 מתעניין</option>
+            <option value="follow_up">⏰ צריך לחזור</option>
+            <option value="not_interested">❌ לא מעוניין</option>
+            <option value="won">💰 נסגר</option>
+            <option value="lost">💔 לא נסגר</option>
           </select>
         </div>
         <div>

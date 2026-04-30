@@ -402,6 +402,46 @@ class LeadPatch(BaseModel):
     status: Optional[str] = None
     notes: Optional[str] = None
     follow_up_date: Optional[str] = None
+    not_interested_reason: Optional[str] = None
+    not_interested_note: Optional[str] = None
+    deal_amount: Optional[float] = None
+    deal_closed_at: Optional[str] = None
+    deal_what_sold: Optional[str] = None
+    lost_reason: Optional[str] = None
+    lost_can_return: Optional[bool] = None
+    lost_return_date: Optional[str] = None
+    money_potential_score: Optional[int] = None
+
+
+VALID_STATUSES = {
+    "new", "in_progress", "interested", "follow_up",
+    "not_interested", "won", "lost",
+}
+
+
+def _log_activity(
+    sb,
+    *,
+    lead_id: str,
+    user_id: str,
+    activity_type: str,
+    outcome: Optional[str] = None,
+    notes: Optional[str] = None,
+    status_from: Optional[str] = None,
+    status_to: Optional[str] = None,
+) -> None:
+    try:
+        sb.table("lead_activities").insert({
+            "lead_id": lead_id,
+            "user_id": user_id,
+            "activity_type": activity_type,
+            "outcome": outcome,
+            "notes": notes,
+            "status_from": status_from,
+            "status_to": status_to,
+        }).execute()
+    except Exception as e:
+        print(f"[ACTIVITY] failed: {e}", flush=True)
 
 
 @app.patch("/api/leads/{lead_id}")
@@ -409,34 +449,193 @@ def patch_lead(lead_id: str, body: LeadPatch, user_id: str = Depends(verify_user
     sb = _sb()
     existing = (
         sb.table("leads")
-        .select("id")
+        .select("id,status")
         .eq("id", lead_id)
         .eq("user_id", user_id)
         .limit(1)
         .execute()
     )
-    if not (getattr(existing, "data", None) or []):
+    rows = getattr(existing, "data", None) or []
+    if not rows:
         raise HTTPException(404, "לא נמצא")
+    prev_status = rows[0].get("status")
+
     upd: dict[str, Any] = {}
     if body.status is not None:
+        if body.status not in VALID_STATUSES:
+            raise HTTPException(400, f"סטטוס לא חוקי: {body.status}")
         upd["status"] = body.status
     if body.notes is not None:
         upd["notes"] = body.notes
     if body.follow_up_date is not None:
         upd["follow_up_date"] = body.follow_up_date or None
+    if body.not_interested_reason is not None:
+        upd["not_interested_reason"] = body.not_interested_reason or None
+    if body.not_interested_note is not None:
+        upd["not_interested_note"] = body.not_interested_note or None
+    if body.deal_amount is not None:
+        upd["deal_amount"] = body.deal_amount
+    if body.deal_closed_at is not None:
+        upd["deal_closed_at"] = body.deal_closed_at or None
+    if body.deal_what_sold is not None:
+        upd["deal_what_sold"] = body.deal_what_sold or None
+    if body.lost_reason is not None:
+        upd["lost_reason"] = body.lost_reason or None
+    if body.lost_can_return is not None:
+        upd["lost_can_return"] = body.lost_can_return
+    if body.lost_return_date is not None:
+        upd["lost_return_date"] = body.lost_return_date or None
+    if body.money_potential_score is not None:
+        upd["money_potential_score"] = body.money_potential_score
+
     if not upd:
         return get_lead(lead_id, user_id)
     sb.table("leads").update(upd).eq("id", lead_id).eq("user_id", user_id).execute()
+
+    # רושם פעילות שינוי סטטוס
+    if body.status is not None and body.status != prev_status:
+        _log_activity(
+            sb,
+            lead_id=lead_id,
+            user_id=user_id,
+            activity_type="status_change",
+            status_from=prev_status,
+            status_to=body.status,
+            notes=body.notes,
+        )
+
     return get_lead(lead_id, user_id)
 
 
 @app.post("/api/leads/{lead_id}/quick-status")
 def quick_status(lead_id: str, action: str = Query(...), user_id: str = Depends(verify_user)):
-    if action == "contacted":
-        return patch_lead(lead_id, LeadPatch(status="contacted"), user_id)
-    if action == "hot":
-        return patch_lead(lead_id, LeadPatch(status="interested"), user_id)
-    raise HTTPException(400, "action לא חוקי — contacted או hot")
+    """
+    פעולות מהירות:
+      start         → in_progress (התחל טיפול)
+      contacted     → in_progress (אחורה תאימות)
+      hot           → interested
+      no_answer     → in_progress + רישום ניסיון שיחה
+      answered      → in_progress + רישום שיחה שנענתה
+      interested    → interested
+      not_relevant  → not_interested (אחורה תאימות)
+      lost          → lost
+      won           → won
+    """
+    sb = _sb()
+    mapping = {
+        "start": "in_progress",
+        "contacted": "in_progress",
+        "no_answer": "in_progress",
+        "answered": "in_progress",
+        "hot": "interested",
+        "interested": "interested",
+        "not_relevant": "not_interested",
+        "not_interested": "not_interested",
+        "follow_up": "follow_up",
+        "lost": "lost",
+        "won": "won",
+    }
+    if action not in mapping:
+        raise HTTPException(400, f"action לא חוקי: {action}")
+
+    new_status = mapping[action]
+
+    # קודם רושם פעילות שיחה אם רלוונטי
+    if action in ("no_answer", "answered"):
+        _log_activity(
+            sb,
+            lead_id=lead_id,
+            user_id=user_id,
+            activity_type="call_attempt" if action == "no_answer" else "call_done",
+            outcome=action,
+        )
+
+    return patch_lead(lead_id, LeadPatch(status=new_status), user_id)
+
+
+# ----- פעילויות (היסטוריית שיחות) -----
+
+class ActivityCreate(BaseModel):
+    activity_type: str  # call_attempt | call_done | whatsapp | note | reminder
+    outcome: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@app.post("/api/leads/{lead_id}/activities")
+def add_activity(lead_id: str, body: ActivityCreate, user_id: str = Depends(verify_user)):
+    sb = _sb()
+    existing = (
+        sb.table("leads").select("id").eq("id", lead_id).eq("user_id", user_id).limit(1).execute()
+    )
+    if not (getattr(existing, "data", None) or []):
+        raise HTTPException(404, "לא נמצא")
+    _log_activity(
+        sb,
+        lead_id=lead_id,
+        user_id=user_id,
+        activity_type=body.activity_type,
+        outcome=body.outcome,
+        notes=body.notes,
+    )
+    return {"ok": True}
+
+
+@app.get("/api/leads/{lead_id}/activities")
+def list_activities(lead_id: str, user_id: str = Depends(verify_user)):
+    sb = _sb()
+    r = (
+        sb.table("lead_activities")
+        .select("*")
+        .eq("lead_id", lead_id)
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(200)
+        .execute()
+    )
+    return getattr(r, "data", None) or []
+
+
+# ----- סטטיסטיקות לדשבורד -----
+
+@app.get("/api/stats/pipeline")
+def pipeline_stats(user_id: str = Depends(verify_user)):
+    """סופר לידים לכל סטטוס + כמה נכנסו היום."""
+    sb = _sb()
+    counts: dict[str, dict[str, int]] = {s: {"total": 0, "today": 0} for s in VALID_STATUSES}
+    counts["follow_up_due"] = {"total": 0, "today": 0}
+
+    try:
+        r = (
+            sb.table("leads")
+            .select("status,created_at,follow_up_date,deal_amount,money_potential_score")
+            .eq("user_id", user_id)
+            .limit(20000)
+            .execute()
+        )
+        rows = getattr(r, "data", None) or []
+        from datetime import datetime, timezone, date as _date
+        today_str = datetime.now(timezone.utc).date().isoformat()
+        deals_total = 0.0
+        for row in rows:
+            s = row.get("status") or "new"
+            if s in counts:
+                counts[s]["total"] += 1
+                ca = (row.get("created_at") or "")[:10]
+                if ca == today_str:
+                    counts[s]["today"] += 1
+            # מעקב — חישוב לידים שהיום או באיחור
+            fud = row.get("follow_up_date")
+            if fud and s == "follow_up" and fud <= today_str:
+                counts["follow_up_due"]["total"] += 1
+            if s == "won":
+                try:
+                    deals_total += float(row.get("deal_amount") or 0)
+                except Exception:
+                    pass
+        counts["_meta"] = {"deals_total": int(deals_total)}  # type: ignore
+        return counts
+    except Exception as e:
+        raise HTTPException(500, f"stats failed: {e}")
 
 
 @app.get("/api/export/csv")

@@ -1,61 +1,32 @@
 -- ============================================================
---  הרץ את כל הקובץ הזה פעם אחת ב-Supabase SQL Editor
---  Dashboard → SQL Editor → New Query → הדבק → Run
+--  CRM Pipeline Restructure
+--  הופך את ה-CRM למערכת ניהול מכירות אמיתית עם שלבים ברורים.
 -- ============================================================
 
--- 1) match_score / match_reason
-alter table public.leads
-  add column if not exists match_score integer default 0,
-  add column if not exists match_reason text;
-
-create index if not exists leads_match_score_idx on public.leads (user_id, match_score desc);
-
--- 2) פרטים טכניים: שנת יצירת האתר, גיל דומיין, זמן טעינה, גודל HTML
-alter table public.leads
-  add column if not exists first_seen_year integer default 0,
-  add column if not exists domain_age_years integer default 0,
-  add column if not exists load_time_ms integer default 0,
-  add column if not exists html_size_kb numeric default 0;
-
--- 3) עסקים בלי אתר אינטרנט
-alter table public.leads
-  add column if not exists no_website boolean default false,
-  add column if not exists social_url text;
-
--- 4) תיקון constraint ייחודי (כדי ש-upsert יעבוד)
-update public.leads
-set site_key = lower(
-  regexp_replace(
-    coalesce(final_url, website, ''),
-    '^https?://(www\.)?([^/]+)(/.*)?$',
-    '\2|\3'
-  )
-)
-where site_key is null or site_key = '';
-
-update public.leads
-set site_key = 'unknown|' || id::text
-where site_key is null or site_key = '';
-
-drop index if exists public.leads_user_site_key_uniq;
-
-create unique index if not exists leads_user_site_key_uniq
-  on public.leads (user_id, site_key);
-
--- 5) CRM Pipeline — סטטוסים חדשים + שדות + טבלת פעילויות
+-- 1) הרחבת רשימת הסטטוסים האפשריים + הוספת won/lost/in_progress/not_interested
 alter table public.leads drop constraint if exists leads_status_check;
 
-update public.leads set status = 'in_progress'    where status = 'contacted';
+-- מיגרציה מהסטטוסים הישנים לחדשים:
+--   contacted        → in_progress  (התחלתי לדבר איתם)
+--   not_relevant     → not_interested  (אמרו לא)
+--   closed           → won  (נסגר בהצלחה)
+update public.leads set status = 'in_progress'   where status = 'contacted';
 update public.leads set status = 'not_interested' where status = 'not_relevant';
-update public.leads set status = 'won'            where status = 'closed';
+update public.leads set status = 'won'           where status = 'closed';
 
 alter table public.leads
   add constraint leads_status_check
   check (status in (
-    'new', 'in_progress', 'interested', 'follow_up',
-    'not_interested', 'won', 'lost'
+    'new',
+    'in_progress',
+    'interested',
+    'follow_up',
+    'not_interested',
+    'won',
+    'lost'
   ));
 
+-- 2) שדות חדשים — סיבות, סכומי עסקה, היסטוריית מגע
 alter table public.leads
   add column if not exists not_interested_reason text,
   add column if not exists not_interested_note   text,
@@ -74,33 +45,38 @@ create index if not exists leads_follow_up_date_idx    on public.leads (user_id,
 create index if not exists leads_lost_return_date_idx  on public.leads (user_id, lost_return_date) where lost_return_date is not null;
 create index if not exists leads_money_potential_idx   on public.leads (user_id, money_potential_score desc);
 
+-- 3) טבלת פעילויות (היסטוריית שיחות / וואטסאפ / שינויי סטטוס)
 create table if not exists public.lead_activities (
   id uuid primary key default gen_random_uuid(),
   lead_id uuid not null references public.leads(id) on delete cascade,
   user_id uuid not null references auth.users(id)   on delete cascade,
   activity_type text not null,
+  -- 'call_attempt' | 'call_done' | 'whatsapp' | 'note' | 'status_change' | 'reminder'
   outcome text,
+  -- 'no_answer' | 'answered' | 'left_message' | 'hung_up' וכו'
   notes text,
   status_from text,
   status_to text,
   created_at timestamptz not null default now()
 );
 
-create index if not exists lead_activities_lead_idx on public.lead_activities (lead_id, created_at desc);
-create index if not exists lead_activities_user_idx on public.lead_activities (user_id, created_at desc);
+create index if not exists lead_activities_lead_idx     on public.lead_activities (lead_id, created_at desc);
+create index if not exists lead_activities_user_idx     on public.lead_activities (user_id, created_at desc);
 
 alter table public.lead_activities enable row level security;
+
 drop policy if exists lead_activities_owner on public.lead_activities;
 create policy lead_activities_owner on public.lead_activities
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
+-- 4) trigger שמעדכן last_contacted_at + call_count כשנרשמת פעילות שיחה
 create or replace function public.bump_lead_contact_stats()
 returns trigger as $$
 begin
   if new.activity_type in ('call_attempt', 'call_done', 'whatsapp') then
     update public.leads
     set last_contacted_at = now(),
-        call_count = coalesce(call_count, 0) + 1
+        call_count = coalesce(call_count, 0) + case when new.activity_type = 'note' then 0 else 1 end
     where id = new.lead_id;
   end if;
   return new;
@@ -113,9 +89,5 @@ create trigger lead_activities_bump
   for each row execute function public.bump_lead_contact_stats();
 
 -- ============================================================
--- ✅ אם לא יצאו שגיאות - הכל מוכן.
--- הסטטוסים הישנים הומרו אוטומטית:
---   contacted     → in_progress
---   not_relevant  → not_interested
---   closed        → won
+-- ✅ מוכן. הסטטוסים הישנים הומרו אוטומטית.
 -- ============================================================
