@@ -25,6 +25,22 @@ function telHref(phone: string): string | null {
   return `tel:+${d}`;
 }
 
+/**
+ * מבטיח שכתובת URL מכילה פרוטוקול תקין (https://).
+ * אם המשתמש שמר רק "instagram.com/foo" או "www.example.com",
+ * הדפדפן היה מתייחס אליו ככתובת יחסית באתר שלנו → 404.
+ */
+function ensureHttps(raw: string): string {
+  const s = (raw || "").trim();
+  if (!s) return "";
+  // כבר יש פרוטוקול
+  if (/^https?:\/\//i.test(s)) return s;
+  // מתחיל ב-// (פרוטוקול יחסי)
+  if (s.startsWith("//")) return `https:${s}`;
+  // נראה כמו דומיין רגיל
+  return `https://${s.replace(/^\/+/, "")}`;
+}
+
 export default function LeadDetailPage() {
   const params = useParams();
   const id = params.id as string;
@@ -113,7 +129,7 @@ export default function LeadDetailPage() {
 
   const phone = String(lead.phone || "");
   const wa = String(lead.whatsapp || "");
-  const url = String(lead.final_url || lead.website || "");
+  const url = ensureHttps(String(lead.final_url || lead.website || ""));
   const opening =
     String(lead.opening_line || lead.best_talking_point || "").trim() || "משפט פתיחה — הוסיפי ידנית";
   const mainProblems = (lead.main_problems as string[]) || [];
@@ -135,7 +151,7 @@ export default function LeadDetailPage() {
   const score = Number(lead.score || 0);
   const couldNotAnalyze = score === 0 && !!leadError;
   const noWebsite = Boolean(lead.no_website);
-  const socialUrl = String(lead.social_url || "");
+  const socialUrl = ensureHttps(String(lead.social_url || ""));
 
   return (
     <div className="space-y-4 pb-28">
