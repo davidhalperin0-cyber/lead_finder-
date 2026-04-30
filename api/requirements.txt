@@ -1,0 +1,12 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-dotenv>=1.0
+PyJWT[crypto]>=2.8
+cryptography>=42.0
+supabase>=2.4
+openpyxl>=3.1
+# תלויות של find_leads.py (משותפות עם requirements.txt בשורש)
+requests>=2.31
+beautifulsoup4>=4.12
+duckduckgo-search>=6.0
+openai>=1.30
