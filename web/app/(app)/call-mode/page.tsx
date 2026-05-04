@@ -55,8 +55,8 @@ export default function CallModePage() {
     // מסנן לידים עם טלפון בלבד, ממיין לפי חום
     const ranked = list
       .filter((L) => String(L.phone || "").trim().length >= 9)
-      .map((L) => ({ ...L, _hot: hotScore(L) }))
-      .sort((a, b) => Number(b._hot) - Number(a._hot));
+      .map((L) => ({ ...L, _hot: hotScore(L) } as Lead & { _hot: number }))
+      .sort((a, b) => b._hot - a._hot);
     setQueue(ranked);
     setIdx(0);
     setLoading(false);

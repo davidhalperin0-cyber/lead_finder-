@@ -507,6 +507,32 @@ def patch_lead(lead_id: str, body: LeadPatch, user_id: str = Depends(verify_user
     return get_lead(lead_id, user_id)
 
 
+@app.post("/api/leads/bulk-delete-no-website")
+def bulk_delete_no_website(user_id: str = Depends(verify_user)):
+    """
+    מוחק לצמיתות את כל הלידים שמסומנים כ-no_website של המשתמש.
+    שימוש: לנקות לידים מזויפים שנוצרו על ידי AI לפני התיקון.
+    """
+    sb = _sb()
+    rows = (
+        sb.table("leads")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("no_website", True)
+        .execute()
+    )
+    ids = [r["id"] for r in (getattr(rows, "data", None) or [])]
+    if not ids:
+        return {"deleted": 0}
+    # מנקה תחילה פעילויות מקושרות
+    try:
+        sb.table("lead_activities").delete().in_("lead_id", ids).execute()
+    except Exception:
+        pass
+    sb.table("leads").delete().in_("id", ids).eq("user_id", user_id).execute()
+    return {"deleted": len(ids)}
+
+
 @app.delete("/api/leads/{lead_id}", status_code=204)
 def delete_lead(lead_id: str, user_id: str = Depends(verify_user)):
     """

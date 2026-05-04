@@ -22,6 +22,38 @@ export default function SearchPage() {
   const [workers, setWorkers] = useState(4);
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
+
+  async function cleanFakeLeads() {
+    const ok = window.confirm(
+      "למחוק את כל הלידים שמסומנים כ'בלי אתר'?\n\n" +
+      "אלה הלידים שנוצרו על ידי AI לפני התיקון, ויש להם מספרי טלפון לא אמיתיים.\n\n" +
+      "אי אפשר לשחזר!"
+    );
+    if (!ok) return;
+    setCleaning(true);
+    setMsg(null);
+    try {
+      const supabase = createClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        setMsg("אין סשן — התחברי מחדש");
+        return;
+      }
+      const res = await apiFetch<{ deleted: number }>(
+        "/api/leads/bulk-delete-no-website",
+        session.access_token,
+        { method: "POST" }
+      );
+      setMsg(`✓ נמחקו ${res.deleted} לידים מזויפים. עכשיו תחפשי שוב — יבואו רק לידים אמיתיים!`);
+    } catch (err: unknown) {
+      setMsg(err instanceof Error ? err.message : "שגיאה");
+    } finally {
+      setCleaning(false);
+    }
+  }
 
   async function startSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -198,12 +230,14 @@ export default function SearchPage() {
             <div className="font-medium">
               🔥 רק עסקים בלי אתר{" "}
               <span className="rounded bg-amber-200 px-1.5 py-0.5 text-xs font-bold text-amber-900">
-                הזדמנות זהב
+                100% אמיתי
               </span>
             </div>
             <div className="text-xs text-slate-600 mt-1">
-              מצב מיוחד שמחפש <strong>רק</strong> עסקים שאין להם אתר אינטרנט.
-              לידים מצוינים לבעל אתרים — הם צריכים אתר מאפס.
+              <strong>רק נתונים אמיתיים מ-OpenStreetMap</strong> — קהילה של אנשים אמיתיים
+              שתרמו ידנית את המספרים. בלי AI, בלי המצאות.
+              <br />
+              ⚠️ עיר קטנה? יכול להיות שיהיו מעט תוצאות. נסי תל אביב/חיפה/ירושלים.
             </div>
           </div>
         </label>
@@ -266,6 +300,27 @@ export default function SearchPage() {
       <Link href="/dashboard" className="block text-center text-sm text-brand underline">
         חזרה ללידים
       </Link>
+
+      {/* אזור ניקוי - לידים מזויפים שנוצרו לפני התיקון */}
+      <div className="mt-6 rounded-xl border-2 border-rose-200 bg-rose-50 p-4">
+        <h3 className="font-bold text-rose-900 text-sm mb-1">
+          🧹 ניקוי לידים מזויפים
+        </h3>
+        <p className="text-xs text-rose-800 mb-3">
+          קיבלת מספרים מזויפים בלידים &quot;בלי אתר&quot;? זה היה באג של ה-AI שכבר תוקן.
+          לחצי כאן כדי למחוק את כל הלידים הישנים בלי אתר ולהתחיל נקי.
+          <br />
+          <strong>לידים חדשים יבואו רק מ-OpenStreetMap (אמיתי 100%).</strong>
+        </p>
+        <button
+          type="button"
+          onClick={cleanFakeLeads}
+          disabled={cleaning}
+          className="w-full rounded-lg bg-rose-600 hover:bg-rose-700 disabled:opacity-50 px-4 py-2 text-sm font-bold text-white"
+        >
+          {cleaning ? "מנקה..." : "🗑️ מחק את כל הלידים בלי אתר"}
+        </button>
+      </div>
     </div>
   );
 }

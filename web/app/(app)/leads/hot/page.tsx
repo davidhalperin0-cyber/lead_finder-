@@ -68,8 +68,8 @@ export default function HotLeadsPage() {
 
   const ranked = useMemo(() => {
     return leads
-      .map((L) => ({ ...L, _hot: hotScore(L) }))
-      .sort((a, b) => Number(b._hot) - Number(a._hot))
+      .map((L) => ({ ...L, _hot: hotScore(L) } as Lead & { _hot: number }))
+      .sort((a, b) => b._hot - a._hot)
       .slice(0, 25);
   }, [leads]);
 

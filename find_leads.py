@@ -97,6 +97,65 @@ def _normalize_il_phone(phone: str) -> str:
     return "+{}".format(d) if not d.startswith("+") else d
 
 
+def _extract_social_url(tags: dict) -> str:
+    """
+    מחלץ קישור אמיתי לדף סושיאל מתגי OSM.
+    סדר עדיפויות: Instagram → Facebook → website (אם הוא דף סושיאל)
+    הקישור הזה הוא 100% אמיתי כי OSM נשמר ידנית על ידי קהילה.
+    """
+    candidates = [
+        tags.get("contact:instagram") or "",
+        tags.get("instagram") or "",
+        tags.get("contact:facebook") or "",
+        tags.get("facebook") or "",
+        tags.get("contact:website") or "",
+        tags.get("website") or "",
+    ]
+    for raw in candidates:
+        s = str(raw or "").strip()
+        if not s:
+            continue
+        # אם זה כבר URL מלא - נחזיר אותו כמו שהוא
+        if s.startswith(("http://", "https://")):
+            return s
+        # אם זה רק שם משתמש (@user או user) - נבנה URL
+        clean = s.lstrip("@").strip("/")
+        # מזהים אם זה אינסטגרם או פייסבוק לפי איפה זה הופיע ברשימה
+        idx = candidates.index(raw)
+        if idx in (0, 1):  # אינסטגרם
+            return f"https://www.instagram.com/{clean}"
+        if idx in (2, 3):  # פייסבוק
+            return f"https://www.facebook.com/{clean}"
+        # אחרת - חוזרים עם פרוטוקול
+        return f"https://{clean}"
+    return ""
+
+
+def _build_google_maps_url(element: dict, tags: dict) -> str:
+    """
+    בונה קישור ל-Google Maps לפי הקואורדינטות של העסק.
+    זה לא דף הסושיאל של העסק - אבל זה מקום שבו אפשר לוודא שהעסק קיים
+    ולראות חוות דעת/תמונות.
+    """
+    lat = element.get("lat")
+    lon = element.get("lon")
+    if lat is None or lon is None:
+        # ל-way יש center במקום lat/lon
+        center = element.get("center") or {}
+        lat = center.get("lat")
+        lon = center.get("lon")
+    name = (tags.get("name") or tags.get("name:he") or "").strip()
+    if lat is not None and lon is not None:
+        if name:
+            from urllib.parse import quote
+            return f"https://www.google.com/maps/search/{quote(name)}/@{lat},{lon},17z"
+        return f"https://www.google.com/maps?q={lat},{lon}"
+    if name:
+        from urllib.parse import quote
+        return f"https://www.google.com/maps/search/{quote(name)}"
+    return ""
+
+
 def _is_israeli_phone(phone: str) -> bool:
     """
     בודק אם טלפון נראה ישראלי (קידומת 972 או 0X תקינה).
@@ -310,26 +369,37 @@ def search_businesses_overpass(
 
     # תגי OSM: או ["website"] (ברירת מחדל) או [!website][phone] (רק בלי אתר, חייב טלפון)
     if only_without_website:
-        site_clause = '[!"website"][!"contact:website"]["phone"]'
+        # מקבלים גם phone וגם contact:phone - לא להפסיד עסקים בגלל שם תג שונה
+        site_clause = '[!"website"][!"contact:website"]'
+        phone_clause_node_options = ['["phone"]', '["contact:phone"]']
     else:
         site_clause = '["website"]'
+        phone_clause_node_options = [""]
 
     # שלב א: נסה למצוא bounding box באמצעות Nominatim
     bbox = _nominatim_bbox(city)
     if bbox:
         s, w, n, e = bbox
         print(f"  Nominatim bbox for '{city}': {bbox} (only_without_website={only_without_website})", file=sys.stderr)
+        # בונים שאילתה עם כל אופציות הטלפון (phone + contact:phone)
+        phone_unions = []
+        for phone_clause in phone_clause_node_options:
+            phone_unions.append(f"node[{osm_filter}]{site_clause}{phone_clause}({s},{w},{n},{e});")
+            phone_unions.append(f"way[{osm_filter}]{site_clause}{phone_clause}({s},{w},{n},{e});")
         query = f"""
         [out:json][timeout:30];
         (
-          node[{osm_filter}]{site_clause}({s},{w},{n},{e});
-          way[{osm_filter}]{site_clause}({s},{w},{n},{e});
+          {chr(10).join(phone_unions)}
         );
-        out body {limit};
+        out body {limit * 2};
         """
     else:
         # גיבוי: שיטה ישנה בעזרת שם העיר
         print(f"  Nominatim לא הצליח, נופל לחיפוש לפי שם עיר", file=sys.stderr)
+        phone_unions_area = []
+        for phone_clause in phone_clause_node_options:
+            phone_unions_area.append(f"node[{osm_filter}]{site_clause}{phone_clause}(area.searchArea);")
+            phone_unions_area.append(f"way[{osm_filter}]{site_clause}{phone_clause}(area.searchArea);")
         query = f"""
         [out:json][timeout:30];
         (
@@ -338,10 +408,9 @@ def search_businesses_overpass(
           area["name:en"~"{city}",i]["boundary"="administrative"];
         )->.searchArea;
         (
-          node[{osm_filter}]{site_clause}(area.searchArea);
-          way[{osm_filter}]{site_clause}(area.searchArea);
+          {chr(10).join(phone_unions_area)}
         );
-        out body {limit};
+        out body {limit * 2};
         """
     endpoints = [
         "https://overpass-api.de/api/interpreter",
@@ -368,6 +437,11 @@ def search_businesses_overpass(
                         # אימות נוסף: חייב להיות טלפון ישראלי
                         if not _is_israeli_phone(phone):
                             continue
+                        # ===== חילוץ קישורים לסושיאל - הפייסבוק/אינסטגרם האמיתיים =====
+                        social_url = _extract_social_url(tags)
+                        # אם אין סושיאל ב-OSM, נבנה קישור Google Maps לעסק עצמו
+                        if not social_url:
+                            social_url = _build_google_maps_url(el, tags)
                         results.append({
                             "name": tags.get("name") or tags.get("name:he") or "Unknown",
                             "website": "",
@@ -377,6 +451,8 @@ def search_businesses_overpass(
                                 tags.get("addr:street"), tags.get("addr:housenumber"),
                                 tags.get("addr:city")
                             ])),
+                            "social": social_url,
+                            "source_url": social_url,
                             "no_website": True,
                         })
                     else:
@@ -721,24 +797,24 @@ def find_businesses(
         print(f"  מתעלם מ-{len(exclude_domains)} דומיינים שכבר חיפשנו")
 
     if only_without_website:
-        # במצב "בלי אתר" — OSM קודם! זה נתונים אמיתיים מקהילת OpenStreetMap
-        # (אנשים אמיתיים תרמו ידנית את הטלפונים). AI נוטה להמציא מספרים.
-        print("  [1] מנסה OpenStreetMap Overpass (מקור אמין)...")
+        # ⚠️ במצב "בלי אתר" — אסור AI! אסור! AI ממציא טלפונים גם כשאומרים לו לא.
+        # אנחנו מסתמכים אך ורק על OpenStreetMap — נתונים שתרמו אנשים אמיתיים,
+        # שעוברים ולידציה של קהילת OSM. כל טלפון שם הוא אמיתי.
+        print("  [OSM בלבד] מקור אמין - בלי AI, בלי הזיות, רק נתונים אמיתיים")
         osm_results = search_businesses_overpass(
             city, business_type, limit,
             only_without_website=True,
         )
         _add_results(osm_results, "OSM")
-        if len(combined) >= limit:
-            return combined[:limit]
-
-        print("  [2] משלים עם AI (gpt-4o-mini-search-preview) - רק עם מקור מאומת...")
-        ai_results = search_businesses_ai(
-            city, business_type, description, limit,
-            exclude_domains | seen_keys,
-            only_without_website=True,
-        )
-        _add_results(ai_results, "AI")
+        if len(combined) == 0:
+            print(
+                "  ⚠️  לא נמצאו עסקים בלי אתר ב-OSM לקטגוריה הזו בעיר הזו.\n"
+                "  💡 הצעות:\n"
+                "     1. נסי עיר גדולה יותר (תל אביב, חיפה, ירושלים)\n"
+                "     2. נסי קטגוריה אחרת\n"
+                "     3. או חפשי 'עם אתר' — שם יש יותר תוצאות אמינות.",
+                file=sys.stderr,
+            )
     else:
         # במצב "עם אתר" — AI יעיל יותר כי יש URL לאמת
         print("  [1] מנסה AI (gpt-4o-mini-search-preview)...")
