@@ -507,6 +507,37 @@ def patch_lead(lead_id: str, body: LeadPatch, user_id: str = Depends(verify_user
     return get_lead(lead_id, user_id)
 
 
+@app.delete("/api/leads/{lead_id}", status_code=204)
+def delete_lead(lead_id: str, user_id: str = Depends(verify_user)):
+    """
+    מחיקה מוחלטת של ליד. הליד נמחק לצמיתות מבסיס הנתונים.
+    משאיר את site_key בטבלת searched_domains כדי לא לחזור עליו בחיפוש הבא.
+    """
+    sb = _sb()
+    existing = (
+        sb.table("leads")
+        .select("id,site_key")
+        .eq("id", lead_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    rows = getattr(existing, "data", None) or []
+    if not rows:
+        raise HTTPException(404, "לא נמצא")
+
+    # מחיקה: גם פעילויות קשורות ייעלמו (אם יש cascade בסכמה).
+    # אם אין cascade — מוחקים ידנית כדי לא להשאיר זבל.
+    try:
+        sb.table("lead_activities").delete().eq("lead_id", lead_id).execute()
+    except Exception:
+        # הטבלה אולי לא קיימת בסכמות ישנות — לא נורא
+        pass
+
+    sb.table("leads").delete().eq("id", lead_id).eq("user_id", user_id).execute()
+    return None
+
+
 @app.post("/api/leads/{lead_id}/quick-status")
 def quick_status(lead_id: str, action: str = Query(...), user_id: str = Depends(verify_user)):
     """

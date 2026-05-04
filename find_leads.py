@@ -97,6 +97,30 @@ def _normalize_il_phone(phone: str) -> str:
     return "+{}".format(d) if not d.startswith("+") else d
 
 
+def _is_israeli_phone(phone: str) -> bool:
+    """
+    בודק אם טלפון נראה ישראלי (קידומת 972 או 0X תקינה).
+    מטרה: לסנן עסקים שלא בישראל - למשל אם AI החזיר עסק עם טלפון אמריקאי (+1).
+    """
+    if not phone:
+        return False
+    d = re.sub(r"\D", "", phone)
+    if d.startswith("00"):
+        d = d[2:]
+    # 972 בתחילת המספר - תקין (12 ספרות סה"כ)
+    if d.startswith("972") and 11 <= len(d) <= 13:
+        return True
+    # 0 בתחילת המספר - תקין רק אם הספרה השנייה מהווה קידומת ישראלית
+    # קידומות נייד: 050,051,052,053,054,055,058
+    # קידומות נייח: 02,03,04,08,09
+    if d.startswith("0") and 9 <= len(d) <= 10:
+        if len(d) == 10 and d[1] == "5":  # נייד
+            return True
+        if len(d) == 9 and d[1] in ("2", "3", "4", "8", "9"):  # נייח
+            return True
+    return False
+
+
 def _normalize_url_for_storage(url: str) -> str:
     """URL נקי לשמירה: מוריד query/fragment, מוריד www, מסיר / בסוף."""
     href = _url_for_href(url) or ""
@@ -187,6 +211,14 @@ class Lead:
     html_size_kb: float = 0.0  # גודל ה-HTML
     no_website: bool = False   # עסק בלי אתר אינטרנט
     social_url: str = ""       # קישור לדף פייסבוק/אינסטגרם/גוגל (כשאין אתר)
+    # ----- תסריט שיחה אנושי -----
+    script_intro: str = ""              # פתיחה — איך לפתוח את השיחה
+    script_discovery: list = field(default_factory=list)  # 2-3 שאלות לגלות בעיות
+    script_value_pitch: str = ""        # איך לחבר ערך לבעיה שלהם
+    script_offer: str = ""              # ההצעה המעשית
+    script_close: str = ""              # סגירה — מה לבקש
+    script_objections: dict = field(default_factory=dict)  # {"אין זמן": "תשובה",...}
+    script_dos_and_donts: list = field(default_factory=list)  # טיפים קצרים לשיחה
 
 
 # ----------------------------------------------------------------------------
@@ -194,7 +226,13 @@ class Lead:
 # ----------------------------------------------------------------------------
 
 def _nominatim_bbox(city: str) -> Optional[tuple[float, float, float, float]]:
-    """Use Nominatim to find a bounding box for the city. Returns (south, west, north, east) or None."""
+    """
+    Use Nominatim to find a bounding box for the city in ISRAEL only.
+    Returns (south, west, north, east) or None if not found in Israel.
+
+    חשוב: אנחנו לא נופלים לחיפוש עולמי כי זה יכול להחזיר ערים עם
+    שמות דומים במדינות אחרות (למשל 'הטילו' → Hatillo בפוארטו ריקו).
+    """
     try:
         r = requests.get(
             "https://nominatim.openstreetmap.org/search",
@@ -206,20 +244,23 @@ def _nominatim_bbox(city: str) -> Optional[tuple[float, float, float, float]]:
             return None
         data = r.json()
         if not data:
-            # Try without country restriction
-            r2 = requests.get(
-                "https://nominatim.openstreetmap.org/search",
-                params={"q": city, "format": "json", "limit": 1},
-                headers=HEADERS,
-                timeout=15,
+            # אם לא מצאנו את העיר בישראל - מחזירים None במקום לחפש בעולם.
+            print(
+                f"  ⚠️  Nominatim: '{city}' לא נמצאה בישראל. "
+                f"בדקי איות (אפשר גם באנגלית).",
+                file=sys.stderr,
             )
-            if r2.status_code != 200:
-                return None
-            data = r2.json()
-        if not data:
             return None
         bb = data[0].get("boundingbox")  # [south, north, west, east] as strings
         if not bb or len(bb) != 4:
+            return None
+        # אימות נוסף: וידוא שהתוצאה אכן בישראל (לפי country_code)
+        country_code = (data[0].get("address", {}) or {}).get("country_code", "").lower()
+        if country_code and country_code != "il":
+            print(
+                f"  ⚠️  Nominatim: '{city}' נמצאה במדינה {country_code}, לא בישראל. מתעלמים.",
+                file=sys.stderr,
+            )
             return None
         return (float(bb[0]), float(bb[2]), float(bb[1]), float(bb[3]))
     except Exception as e:
@@ -323,6 +364,9 @@ def search_businesses_overpass(
                         # חייב להיות טלפון כדי שיהיה אפשר לפנות
                         phone = tags.get("phone") or tags.get("contact:phone") or ""
                         if not phone:
+                            continue
+                        # אימות נוסף: חייב להיות טלפון ישראלי
+                        if not _is_israeli_phone(phone):
                             continue
                         results.append({
                             "name": tags.get("name") or tags.get("name:he") or "Unknown",
@@ -473,28 +517,33 @@ def search_businesses_ai(
     blacklist_text = ", ".join(sorted(_DOMAIN_BLACKLIST))
 
     if only_without_website:
-        user_prompt = f"""אני מחפשת לידים — עסקים מקומיים מסוג "{business_type}" בעיר "{city}" שאין להם אתר אינטרנט עצמאי.{desc_text}{excluded_text}
+        user_prompt = f"""אני מחפשת לידים — עסקים מקומיים בישראל בלבד מסוג "{business_type}" בעיר "{city}" (ישראל) שאין להם אתר אינטרנט עצמאי.{desc_text}{excluded_text}
 
-חשוב מאוד:
-1. מצאי לפחות {limit} עסקים שאין להם אתר עצמאי משלהם — רק דף בגוגל, פייסבוק, אינסטגרם, או רישום באתרי תיירות/דירוגים.
-2. כל עסק חייב טלפון אמיתי (חיוני לפנייה).
-3. כתובת בעיר {city} בלבד.
-4. אסור לחזור על אותו עסק.
-5. דרכים למצוא: Google Maps של עסקים מקומיים, רשימות פייסבוק, אתרי דירוגים. תני עדיפות לעסקים קטנים-בינוניים.
+חשוב מאוד — אסור להמציא נתונים:
+1. ‏**ישראל בלבד** — אסור עסקים מחו"ל. אם יש עיר עם שם דומה במדינה אחרת (Hatillo בפוארטו ריקו, Tel Aviv במקום אחר וכו') — אסור! רק ישראל.
+2. ‏**כל טלפון חייב להיות מאומת** — ראית אותו במקור אמיתי באינטרנט. אם לא ראית טלפון אמיתי — אל תכלילי את העסק.
+3. ‏**חובה לכלול שדה `source_url`** — הקישור שבו ראית את הטלפון (למשל דף הפייסבוק/אינסטגרם/Google Maps של העסק). זה חיוני לאימות.
+4. כל הטלפונים חייבים להיות ישראליים (קידומת 0XX או 972+). אסור +1, +44, או כל קידומת זרה.
+5. מצאי לפחות {limit} עסקים שאין להם אתר עצמאי משלהם — רק דף בגוגל, פייסבוק, אינסטגרם, או רישום באתרי תיירות/דירוגים.
+6. כתובת בעיר {city} ישראל בלבד.
+7. אסור לחזור על אותו עסק.
+8. דרכים למצוא: Google Maps של עסקים מקומיים בישראל, רשימות פייסבוק, אתרי דירוגים ישראליים (zap, restaurants.co.il, easy.co.il). תני עדיפות לעסקים קטנים-בינוניים.
 
 החזירי JSON תקני בלבד (ללא טקסט נוסף, ללא markdown), במבנה הזה:
-{{"businesses":[{{"name":"שם","phone":"05X-XXX","address":"רחוב, עיר","social":"facebook/instagram/google url אופציונלי"}}, ...]}}
+{{"businesses":[{{"name":"שם","phone":"05X-XXXXXXX","address":"רחוב, עיר","social":"facebook/instagram/google url אופציונלי","source_url":"https://www.facebook.com/business-page-where-you-saw-the-phone"}}, ...]}}
 
-אל תכלילי שדה website. אל תמציאי טלפונים. אם אין טלפון - אל תכלילי את העסק."""
+אל תכלילי שדה website. ‏**אסור להמציא טלפונים**. אם אין לך מקור אמיתי שמופיע בו טלפון — אל תכלילי את העסק. עדיף 5 לידים אמיתיים מאשר 20 ממציאים."""
     else:
-        user_prompt = f"""אני מחפשת לידים — עסקים מקומיים מסוג "{business_type}" בעיר "{city}" שיש להם אתר אינטרנט פעיל.{desc_text}{excluded_text}
+        user_prompt = f"""אני מחפשת לידים — עסקים מקומיים בישראל בלבד מסוג "{business_type}" בעיר "{city}" (ישראל) שיש להם אתר אינטרנט פעיל.{desc_text}{excluded_text}
 
 חשוב מאוד:
-1. מצאי לפחות {limit} עסקים שונים. תחפשי בגוגל, תכנסי לרשימות עסקים, תאתרי אתרים אמיתיים.
-2. כל עסק חייב URL של האתר העצמאי שלו (לא דף פייסבוק, לא דף ב-easy.co.il, לא ב-zap, לא ב-restaurants.co.il).
-3. אסור לחזור על אותו עסק (לפי דומיין).
-4. עדיפות לעסקים שאתרם נראה ישן/לא מקצועי — הם הלידים הכי שווים.
-5. כל עסק חייב להיות באמת בעיר {city}, לא בעיר אחרת.
+1. ‏**ישראל בלבד** — אסור עסקים מחו"ל. אם יש עיר עם שם דומה במדינה אחרת (Hatillo בפוארטו ריקו, Tel Aviv במקום אחר וכו') — אסור! רק ישראל.
+2. עדיפות לאתרים בעברית או .co.il / .org.il. אם יש טלפון, חייב להיות ישראלי (0XX או 972+).
+3. מצאי לפחות {limit} עסקים שונים. תחפשי בגוגל, תכנסי לרשימות עסקים, תאתרי אתרים אמיתיים.
+4. כל עסק חייב URL של האתר העצמאי שלו (לא דף פייסבוק, לא דף ב-easy.co.il, לא ב-zap, לא ב-restaurants.co.il).
+5. אסור לחזור על אותו עסק (לפי דומיין).
+6. עדיפות לעסקים שאתרם נראה ישן/לא מקצועי — הם הלידים הכי שווים.
+7. כל עסק חייב להיות באמת בעיר {city} ישראל, לא בעיר אחרת.
 
 החזירי JSON תקני בלבד (ללא טקסט נוסף, ללא markdown), במבנה הזה:
 {{"businesses":[{{"name":"שם","website":"https://...","phone":"","address":""}}, ...]}}
@@ -544,7 +593,22 @@ def search_businesses_ai(
         if only_without_website:
             phone = (b.get("phone") or "").strip()
             name = (b.get("name") or "").strip()
+            social = (b.get("social") or "").strip()
+            source_url = (b.get("source_url") or "").strip()
             if not phone or not name:
+                continue
+            # סינון: חובה טלפון ישראלי. עסקים מחו"ל נחתכים כאן.
+            if not _is_israeli_phone(phone):
+                print(f"  AI search: דילוג על '{name}' — טלפון לא ישראלי: {phone}", file=sys.stderr)
+                continue
+            # סינון: חובה שיהיה מקור אמין לטלפון (קישור URL).
+            # זה הכלי העיקרי שלנו נגד AI שממציא מספרים.
+            verifiable_url = source_url or social
+            if not verifiable_url or not verifiable_url.startswith(("http://", "https://")):
+                print(
+                    f"  AI search: דילוג על '{name}' — אין מקור URL לאימות הטלפון",
+                    file=sys.stderr,
+                )
                 continue
             # de-dup לפי שם+טלפון (אין לנו דומיין)
             phone_digits_dd = re.sub(r"\D", "", phone)
@@ -558,7 +622,8 @@ def search_businesses_ai(
                 "phone": phone,
                 "email": (b.get("email") or "").strip(),
                 "address": (b.get("address") or "").strip(),
-                "social": (b.get("social") or "").strip(),
+                "social": social or source_url,
+                "source_url": source_url or social,
                 "no_website": True,
             })
             if len(out) >= limit:
@@ -574,11 +639,16 @@ def search_businesses_ai(
             d = _domain_of(site)
             if d in exclude_domains or d in seen_keys:
                 continue
+            # אם יש טלפון - חובה שיהיה ישראלי. אם הוא ריק - נסבול את זה.
+            phone = (b.get("phone") or "").strip()
+            if phone and not _is_israeli_phone(phone):
+                print(f"  AI search: דילוג על '{site}' — טלפון לא ישראלי: {phone}", file=sys.stderr)
+                continue
             seen_keys.add(d)
             out.append({
                 "name": (b.get("name") or "").strip() or d,
                 "website": site,
-                "phone": (b.get("phone") or "").strip(),
+                "phone": phone,
                 "email": (b.get("email") or "").strip(),
                 "address": (b.get("address") or "").strip(),
             })
@@ -650,27 +720,46 @@ def find_businesses(
     if exclude_domains:
         print(f"  מתעלם מ-{len(exclude_domains)} דומיינים שכבר חיפשנו")
 
-    print("  [1] מנסה AI (gpt-4o-mini-search-preview)...")
-    ai_results = search_businesses_ai(
-        city, business_type, description, limit,
-        exclude_domains | seen_keys,
-        only_without_website=only_without_website,
-    )
-    _add_results(ai_results, "AI")
-    if len(combined) >= limit:
-        return combined[:limit]
+    if only_without_website:
+        # במצב "בלי אתר" — OSM קודם! זה נתונים אמיתיים מקהילת OpenStreetMap
+        # (אנשים אמיתיים תרמו ידנית את הטלפונים). AI נוטה להמציא מספרים.
+        print("  [1] מנסה OpenStreetMap Overpass (מקור אמין)...")
+        osm_results = search_businesses_overpass(
+            city, business_type, limit,
+            only_without_website=True,
+        )
+        _add_results(osm_results, "OSM")
+        if len(combined) >= limit:
+            return combined[:limit]
 
-    print("  [2] משלים עם OpenStreetMap Overpass...")
-    osm_results = search_businesses_overpass(
-        city, business_type, limit,
-        only_without_website=only_without_website,
-    )
-    _add_results(osm_results, "OSM")
-    if len(combined) >= limit:
-        return combined[:limit]
+        print("  [2] משלים עם AI (gpt-4o-mini-search-preview) - רק עם מקור מאומת...")
+        ai_results = search_businesses_ai(
+            city, business_type, description, limit,
+            exclude_domains | seen_keys,
+            only_without_website=True,
+        )
+        _add_results(ai_results, "AI")
+    else:
+        # במצב "עם אתר" — AI יעיל יותר כי יש URL לאמת
+        print("  [1] מנסה AI (gpt-4o-mini-search-preview)...")
+        ai_results = search_businesses_ai(
+            city, business_type, description, limit,
+            exclude_domains | seen_keys,
+            only_without_website=False,
+        )
+        _add_results(ai_results, "AI")
+        if len(combined) >= limit:
+            return combined[:limit]
 
-    if not only_without_website:
-        # DDG מבוסס חיפוש אתרים, אז לא רלוונטי למצב "בלי אתר"
+        print("  [2] משלים עם OpenStreetMap Overpass...")
+        osm_results = search_businesses_overpass(
+            city, business_type, limit,
+            only_without_website=False,
+        )
+        _add_results(osm_results, "OSM")
+        if len(combined) >= limit:
+            return combined[:limit]
+
         print("  [3] משלים עם DuckDuckGo...")
         ddg_results = search_businesses_ddg(city, business_type, limit)
         _add_results(ddg_results, "DDG")
@@ -899,7 +988,10 @@ def score_to_grade(score: int) -> str:
 # ניתוח AI + הכנה לשיחה (אנושי בלבד — ללא שליחת הודעות אוטומטית)
 # ----------------------------------------------------------------------------
 
-_AI_JSON_INSTRUCTIONS = """החזר JSON תקף בלבד, בלי טקסט לפני או אחרי. מפתחות:
+_AI_JSON_INSTRUCTIONS = """את עוזרת מכירות ישראלית מנוסה. את עוזרת לבעלת עסק קטן (פרילנסרית) למכור שירותי בניית/שדרוג אתרים לעסקים.
+החזירי JSON תקף בלבד, בלי טקסט לפני או אחרי. כל הטקסטים בעברית מדוברת, חמה ויומיומית — לא שיווק מנופח, לא מילים גבוהות, כמו שאחת חברה הייתה מסבירה לחברה. דברי בגוף ראשון יחיד (אני).
+
+מפתחות:
 {
   "summary": "משפט אחד עד שניים בעברית — איך האתר מרגיש",
   "ux_issues": ["בעיה UX קצרה"],
@@ -917,8 +1009,30 @@ _AI_JSON_INSTRUCTIONS = """החזר JSON תקף בלבד, בלי טקסט לפנ
   "what_to_offer": "מה להציע במפורש (למשל: דף נחיתה, אתר חדש, שדרוג נייד) — משפט אחד",
   "next_action": "אחד מהבאים בלבד: call או whatsapp או skip",
   "match_score": 0,
-  "match_reason": "אם נתון לי תיאור של מי מחפשים — כמה זה מתאים (0=לא מתאים, 100=התאמה מושלמת); משפט קצר למה. אם לא נתון תיאור — החזר 0 ומחרוזת ריקה."
+  "match_reason": "אם נתון לי תיאור של מי מחפשים — כמה זה מתאים (0=לא מתאים, 100=התאמה מושלמת); משפט קצר למה. אם לא נתון תיאור — החזר 0 ומחרוזת ריקה.",
+
+  "script_intro": "איך לפתוח את השיחה. 2-3 משפטים, ידידותי, לא מוכר מהדקה הראשונה. תני בדיוק את המילים שצריך להגיד ('היי, מדבר... ראיתי שיש לכם אתר ל...'). חשוב: להציג את עצמי, להגיד למה אני מתקשרת, ולשאול אם זה זמן טוב לדקה.",
+  "script_discovery": ["2-3 שאלות שאני שואלת אותם כדי לגלות בעיות. שאלות אמיתיות שיגרמו להם להבין שיש להם בעיה. למשל: 'כמה פניות אתם מקבלים מהאתר בשבוע?' או 'מתי בפעם האחרונה עדכנתם את האתר?'. כל פריט במערך הוא שאלה אחת מנוסחת מילה במילה."],
+  "script_value_pitch": "ברגע שגיליתי בעיה — איך אני מציגה את הערך שלי. 2-3 משפטים שמחברים את הבעיה שלהם לפתרון שלי. דבר על תוצאה עסקית (יותר פניות, יותר לקוחות, פחות בעיות), לא על טכנולוגיה.",
+  "script_offer": "ההצעה הקונקרטית — 'אני יכולה לבנות לך X תוך Y שבועות ב-Z שקלים'. או 'בואי נקבע פגישה של 15 דקות בה אני אראה לך איך זה ייראה'. מילים מדויקות.",
+  "script_close": "הקריאה לפעולה: מה אני מבקשת בסוף השיחה. למשל: 'אז מה דעתך שניפגש ביום שני בבוקר?' או 'אשלח לך הצעת מחיר במייל - מה האימייל הכי טוב?'. מנוסח כשאלה סגורה.",
+  "script_objections": {
+    "אין לי זמן": "תשובה אנושית של 1-2 משפטים — מבינה אותם, מציעה לחזור בזמן יותר נח",
+    "יש לי כבר מישהו": "תשובה — לא דוחפת, מציעה ערך שונה (חוות דעת שניה, ייעוץ חינם)",
+    "זה יקר מדי": "תשובה — שואלת מה הם משלמים היום או מציעה אפשרות זולה יותר",
+    "לא מעוניין": "תשובה — שואלת מה הסיבה, מציעה לחזור בעתיד"
+  },
+  "script_dos_and_donts": ["3-5 טיפים קצרים — למשל: 'אל תקראי מהדף, תהיי טבעית', 'תני להם לדבר 70% מהזמן', 'אם הם שותקים — את שותקת', 'אל תפחדי להגיד את המחיר'"]
 }
+
+חוקי ניסוח קריטיים לתסריט השיחה:
+1. ‏**עברית מדוברת**, לא ספרותית. כמו שמדברים, לא כמו שכותבים.
+2. ‏**אסור** מילים כמו 'פתרון מקיף', 'טכנולוגיה מתקדמת', 'ערך מוסף'.
+3. ‏**כן**: 'בואי נדבר על זה', 'אני אכין לך משהו', 'יש דרך פשוטה'.
+4. שיחה כמו עם חבר, לא כמו דוקומנט שיווקי.
+5. בכל פריט תני **מילים בדיוק כמו שצריך להגיד** ('היי X, מדבר/ת Y מ...'). אל תכתבי הוראות כמו 'תציגי את עצמך' — תני את הטקסט עצמו.
+6. הכל אישי לעסק הזה — תשתמשי בשם העסק, סוג העסק, והבעיות הספציפיות שגילית.
+
 opportunity_score, close_probability, match_score — מספרים שלמים 0–100. next_action חייב להיות בדיוק call, whatsapp או skip.
 כל הרשימות עד 5 פריטים. עברית בלבד."""
 
@@ -942,6 +1056,13 @@ def _empty_ai_result(reason: str = "") -> dict:
         "next_action": "",
         "match_score": 0,
         "match_reason": "",
+        "script_intro": "",
+        "script_discovery": [],
+        "script_value_pitch": "",
+        "script_offer": "",
+        "script_close": "",
+        "script_objections": {},
+        "script_dos_and_donts": [],
         "_reason": reason,
     }
 
@@ -1021,6 +1142,24 @@ def analyze_with_ai(html: str, url: str, description: str = "") -> dict:
         d["_reason"] = f"שגיאת API: {e}"
         return d
 
+    # פענוח מילון "התנגדויות" - תמיד dict של מחרוזת→מחרוזת
+    raw_obj = data.get("script_objections") or {}
+    objections: dict[str, str] = {}
+    if isinstance(raw_obj, dict):
+        for k, v in raw_obj.items():
+            ks = str(k).strip()
+            vs = str(v).strip()
+            if ks and vs:
+                objections[ks] = vs
+    elif isinstance(raw_obj, list):
+        # בעבר היה לפעמים מערך - נתמוך גם בפורמט הישן
+        for item in raw_obj:
+            if isinstance(item, dict):
+                k = str(item.get("objection") or item.get("q") or "").strip()
+                v = str(item.get("response") or item.get("a") or "").strip()
+                if k and v:
+                    objections[k] = v
+
     out = {
         "summary": str(data.get("summary") or "").strip(),
         "ux_issues": [str(x).strip() for x in (data.get("ux_issues") or []) if str(x).strip()][:5],
@@ -1039,6 +1178,13 @@ def analyze_with_ai(html: str, url: str, description: str = "") -> dict:
         "next_action": _normalize_next_action(str(data.get("next_action") or "")),
         "match_score": _clamp_int(data.get("match_score")) if data.get("match_score") is not None else 0,
         "match_reason": str(data.get("match_reason") or "").strip(),
+        "script_intro": str(data.get("script_intro") or "").strip(),
+        "script_discovery": [str(x).strip() for x in (data.get("script_discovery") or []) if str(x).strip()][:5],
+        "script_value_pitch": str(data.get("script_value_pitch") or "").strip(),
+        "script_offer": str(data.get("script_offer") or "").strip(),
+        "script_close": str(data.get("script_close") or "").strip(),
+        "script_objections": objections,
+        "script_dos_and_donts": [str(x).strip() for x in (data.get("script_dos_and_donts") or []) if str(x).strip()][:6],
     }
     if len(out["main_problems"]) > 5:
         out["main_problems"] = out["main_problems"][:5]
@@ -1070,6 +1216,15 @@ def apply_ai_dict_to_lead(lead: Lead, d: dict) -> None:
         lead.match_score = _clamp_int(d.get("match_score"))
     if d.get("match_reason"):
         lead.match_reason = str(d.get("match_reason")).strip()
+    # תסריט שיחה אנושי
+    lead.script_intro = d.get("script_intro") or ""
+    lead.script_discovery = list(d.get("script_discovery") or [])
+    lead.script_value_pitch = d.get("script_value_pitch") or ""
+    lead.script_offer = d.get("script_offer") or ""
+    lead.script_close = d.get("script_close") or ""
+    obj = d.get("script_objections")
+    lead.script_objections = dict(obj) if isinstance(obj, dict) else {}
+    lead.script_dos_and_donts = list(d.get("script_dos_and_donts") or [])
     r = d.get("_reason")
     if not r:
         lead.ai_notes = ""
@@ -1313,6 +1468,13 @@ def lead_to_supabase_payload(lead: Lead, *, user_id: str, job_id: str) -> dict:
         "html_size_kb": float(lead.html_size_kb or 0),
         "no_website": lead.no_website,
         "social_url": lead.social_url or None,
+        "script_intro": lead.script_intro or None,
+        "script_discovery": lead.script_discovery or [],
+        "script_value_pitch": lead.script_value_pitch or None,
+        "script_offer": lead.script_offer or None,
+        "script_close": lead.script_close or None,
+        "script_objections": lead.script_objections or {},
+        "script_dos_and_donts": lead.script_dos_and_donts or [],
     }
 
 
@@ -1936,7 +2098,9 @@ def _process_no_website_lead(lead: Lead, biz: dict, description: str = "") -> Le
     ומריץ AI לפי שם/כתובת/סוג עסק כדי להעריך התאמה לתיאור.
     """
     lead.no_website = True
-    lead.social_url = (biz.get("social") or "").strip()
+    # שומר את הקישור לדף הסושיאל/Google Maps שבו ראינו את הטלפון —
+    # זה גם הקישור שאפשר לאמת איתו.
+    lead.social_url = (biz.get("social") or biz.get("source_url") or "").strip()
     lead.score = 50          # ציון בעיות בינוני - אין על מה לבדוק
     lead.grade = "C"
     lead.issues = ["אין אתר אינטרנט עצמאי"]
@@ -2008,6 +2172,44 @@ def _process_no_website_lead(lead: Lead, biz: dict, description: str = "") -> Le
     lead.if_not_interested = "תוכל להגיד לי בכמה זה עוזר לך עכשיו? אולי בעוד חודש שווה לחזור?"
     lead.what_to_offer = "בניית אתר מקצועי עם דומיין, אחסון, ועיצוב מותאם לעסק שלך."
     lead.next_action = "call"
+
+    # תסריט שיחה מותאם לעסק בלי אתר
+    biz_name = lead.business_name or "העסק"
+    biz_type = lead.search_business_type or "העסק שלך"
+    lead.script_intro = (
+        f"היי, מדברת [שם שלך]. אני בונה אתרים לעסקים. "
+        f"ראיתי ש-{biz_name} עדיין לא ב-Google בצורה מסודרת — אין לכם אתר. "
+        f"יש לך 2 דקות שאסביר לך מה זה אומר בפועל?"
+    )
+    lead.script_discovery = [
+        f"איך לקוחות חדשים מוצאים אתכם היום? פייסבוק? המלצות? קופון?",
+        f"כמה לקוחות חדשים אתם מקבלים בשבוע מגוגל?",
+        f"חשבתם פעם על אתר? מה עצר אתכם?",
+    ]
+    lead.script_value_pitch = (
+        f"תראה, הלקוחות שלך מחפשים '{biz_type}' בגוגל כל יום, "
+        f"ובלי אתר הם פשוט מגיעים למתחרים שלך. "
+        f"אתר זה לא הוצאה — זה תיק לקוחות חדשים שאת מאבד עכשיו."
+    )
+    lead.script_offer = (
+        f"אני יכולה לבנות לך אתר פשוט אבל מקצועי תוך 2-3 שבועות. "
+        f"אתר שיופיע בגוגל, יראה אותך מקצועי, ויביא לך פניות. "
+        f"מחיר התחלתי שמתאים לעסק קטן."
+    )
+    lead.script_close = "מה דעתך שניפגש לעוד 15 דקות, אני אראה לך דוגמאות, ואת תחליטי?"
+    lead.script_objections = {
+        "אין לי תקציב": "מבינה. אגב, יש אצלי פתרון התחלתי שעולה פחות ממה שאתם מוציאים על פרסום בחודש. רוצה לשמוע?",
+        "אני סומך על פייסבוק": "פייסבוק זה מצוין, אבל אנשים שמחפשים אותך בגוגל לא יראו אותך שם. שני הדברים משלימים.",
+        "אין לי זמן עכשיו": "ברור. מתי יותר נח? אחזור אליך אז ב-5 דקות בלבד.",
+        "אני אחשוב על זה": "בטח. אשלח לך 2-3 דוגמאות של עסקים דומים שעבדתי איתם — תראה ותחליט בלי לחץ. מה האימייל הכי טוב?",
+    }
+    lead.script_dos_and_donts = [
+        "אל תקראי מהדף — דברי טבעי, כמו לחבר.",
+        "תני להם לדבר. אחרי שאלה — שתקי.",
+        "אם הם אמרו 'לא' פעמיים — סיימי בנימוס וחזרי בעוד חודש.",
+        "אל תתחילי מהמחיר. תחילה תני להם להבין שהם מפסידים בלי אתר.",
+    ]
+
     lead.priority_level = compute_priority_level(lead)
     enrich_lead_for_crm(lead)
     return lead

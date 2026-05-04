@@ -80,3 +80,15 @@ export async function logActivity(
     body: JSON.stringify(body),
   });
 }
+
+/**
+ * מוחק ליד לצמיתות מבסיס הנתונים. אי אפשר לשחזר.
+ */
+export async function deleteLead(id: string): Promise<void> {
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error("אין סשן");
+  await apiFetch(`/api/leads/${id}`, session.access_token, {
+    method: "DELETE",
+  });
+}
