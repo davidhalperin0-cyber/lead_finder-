@@ -4,6 +4,11 @@
 
 :root {
   direction: rtl;
+  --brand: 31 78 120;       /* #1f4e78 */
+  --brand-2: 45 106 159;    /* #2d6a9f */
+  --brand-accent: 255 192 0; /* #ffc000 */
+  --hot: 239 68 68;         /* rose-500 */
+  --hot-2: 234 88 12;       /* orange-600 */
 }
 
 html {
@@ -11,5 +16,125 @@ html {
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply bg-gradient-to-br from-slate-50 to-blue-50/40 text-slate-900 antialiased;
+  background-attachment: fixed;
+  font-feature-settings: "ss01", "cv11";
+}
+
+/* Smooth scrolling for the app */
+html {
+  scroll-behavior: smooth;
+}
+
+/* === אנימציות גלובליות === */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+  50% { box-shadow: 0 0 0 14px rgba(239, 68, 68, 0); }
+}
+@keyframes shine {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-fadeIn { animation: fadeIn 0.35s ease-out both; }
+.animate-slideUp { animation: slideUp 0.4s ease-out both; }
+.animate-scaleIn { animation: scaleIn 0.3s ease-out both; }
+.animate-pulseGlow { animation: pulseGlow 2s infinite; }
+.animate-float { animation: float 3s ease-in-out infinite; }
+
+.shine-text {
+  background-image: linear-gradient(
+    110deg,
+    #1f4e78 35%,
+    #ffc000 50%,
+    #1f4e78 65%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: shine 4s linear infinite;
+}
+
+/* === קלפים מהממים === */
+.card-glass {
+  @apply bg-white/80 backdrop-blur-md border border-white/60 shadow-lg shadow-blue-900/5 rounded-2xl;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.card-glass:hover {
+  @apply shadow-xl shadow-blue-900/10;
+  transform: translateY(-2px);
+}
+.card-hot {
+  @apply bg-gradient-to-br from-orange-50 via-rose-50 to-amber-50 border-2 border-rose-200 shadow-lg shadow-rose-200/40 rounded-2xl;
+}
+.card-elevated {
+  @apply bg-white rounded-2xl border border-slate-200 shadow-md transition-all duration-200;
+}
+.card-elevated:hover {
+  @apply shadow-xl border-blue-200;
+  transform: translateY(-1px);
+}
+
+/* === כפתורים מודרניים === */
+.btn-pop {
+  @apply transition-all duration-150 active:scale-95;
+}
+.btn-glow {
+  position: relative;
+  overflow: hidden;
+}
+.btn-glow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,0.35) 50%, transparent 65%);
+  background-size: 200% 100%;
+  animation: shine 3s infinite;
+  pointer-events: none;
+}
+
+/* === בטא badge חי === */
+.dot-live {
+  @apply inline-block h-2 w-2 rounded-full bg-emerald-500;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: pulseGlow 2s infinite;
+}
+
+/* === safe area לטלפון === */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* === scrollbar עדין === */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(31, 78, 120, 0.2);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(31, 78, 120, 0.4); }
+
+/* === text utilities === */
+.text-balance { text-wrap: balance; }
+
+/* === התאמה ל-mobile === */
+@media (max-width: 640px) {
+  body { font-size: 15px; }
 }
