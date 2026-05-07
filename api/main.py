@@ -174,12 +174,22 @@ def _run_search_job(job_id: str, user_id: str, body: SearchBody) -> None:
                 }
             ).eq("id", job_id).execute()
 
-        # שולפת דומיינים של לידים קיימים של המשתמש כדי למנוע כפילויות
+        # שולפת מזהים של לידים קיימים של המשתמש כדי למנוע כפילויות.
+        # מתעלמים גם לפי דומיין/site_key וגם לפי טלפון מנורמל - הגנה מקסימלית.
+        import re as _re
         exclude_domains: set[str] = set()
+        exclude_phones: set[str] = set()
         try:
-            existing = sb.table("leads").select("website,final_url,site_key").eq("user_id", user_id).limit(5000).execute()
+            existing = (
+                sb.table("leads")
+                .select("website,final_url,site_key,phone,whatsapp,business_name")
+                .eq("user_id", user_id)
+                .limit(10000)
+                .execute()
+            )
             from urllib.parse import urlparse as _urlparse
             for lr in (existing.data or []):
+                # דומיינים
                 for col in ("final_url", "website"):
                     u = (lr.get(col) or "").strip()
                     if not u:
@@ -192,12 +202,32 @@ def _run_search_job(job_id: str, user_id: str, body: SearchBody) -> None:
                             exclude_domains.add(d)
                     except Exception:
                         pass
+                # site_key (כולל nosite|name|phone)
                 sk = (lr.get("site_key") or "").strip()
                 if sk:
                     exclude_domains.add(sk)
-            print(f"[SEARCH] excluding {len(exclude_domains)} existing domains from this user", flush=True)
+                # טלפונים מנורמלים - חסימה גם לפי מספר זהה
+                for col in ("phone", "whatsapp"):
+                    p = (lr.get(col) or "").strip()
+                    if not p:
+                        continue
+                    digits = _re.sub(r"\D", "", p)
+                    if digits.startswith("0") and len(digits) >= 9:
+                        digits = "972" + digits[1:]
+                    if digits.startswith("00"):
+                        digits = digits[2:]
+                    if len(digits) >= 9:
+                        exclude_phones.add(digits)
+                        # גם בלי 972 לחיזוק ההגנה
+                        if digits.startswith("972"):
+                            exclude_phones.add(digits[3:])
+            print(
+                f"[SEARCH] excluding {len(exclude_domains)} domains + "
+                f"{len(exclude_phones)} phones from this user",
+                flush=True,
+            )
         except Exception as e:
-            print(f"[SEARCH] failed to load existing domains: {e}", flush=True)
+            print(f"[SEARCH] failed to load existing identifiers: {e}", flush=True)
 
         res = run_pipeline(
             city=body.city.strip(),
@@ -212,6 +242,7 @@ def _run_search_job(job_id: str, user_id: str, body: SearchBody) -> None:
             skip_export=True,
             description=(body.description or "").strip(),
             exclude_domains=exclude_domains,
+            exclude_phones=exclude_phones,
             only_without_website=body.only_without_website,
         )
         leads = res["leads"]
@@ -227,6 +258,17 @@ def _run_search_job(job_id: str, user_id: str, body: SearchBody) -> None:
             if not site_key:
                 continue
             if not final_url and not no_website:
+                continue
+            # שכבת הגנה אחרונה: סינון לפי טלפון לפני שמירה (גם אם המקור פספס)
+            phone = getattr(L, "phone", "") or ""
+            phone_digits = _re.sub(r"\D", "", phone)
+            if phone_digits.startswith("0") and len(phone_digits) >= 9:
+                phone_digits = "972" + phone_digits[1:]
+            phone_no_il = phone_digits[3:] if phone_digits.startswith("972") else phone_digits
+            if phone_digits and (
+                phone_digits in exclude_phones or phone_no_il in exclude_phones
+            ):
+                print(f"[SAVE] דילוג על {L.business_name} - טלפון כבר אצלנו", flush=True)
                 continue
             payloads.append(lead_to_supabase_payload(L, user_id=user_id, job_id=job_id))
 

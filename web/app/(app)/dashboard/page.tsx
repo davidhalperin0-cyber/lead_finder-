@@ -242,10 +242,20 @@ export default function DashboardPage() {
     } else {
       setActiveJob(null);
       setRecentJob(j);
-      if (lastJobStatusRef.current === "running" && j.status === "completed") {
-        setToast(`✓ סיימנו! נשמרו ${j.saved_count} לידים חדשים`);
-        loadStats();
-        setTimeout(() => setToast(null), 4500);
+      if (lastJobStatusRef.current === "running") {
+        if (j.status === "completed") {
+          if (j.saved_count > 0) {
+            setToast(`✓ סיימנו! נשמרו ${j.saved_count} לידים חדשים`);
+          } else {
+            setToast(`😕 לא נמצאו לידים. נסי עיר/קטגוריה אחרת`);
+          }
+          loadStats();
+          setTimeout(() => setToast(null), 5500);
+        } else if (j.status === "failed") {
+          const errMsg = j.error_message || "לא נמצאו עסקים";
+          setToast(`❌ ${errMsg}`);
+          setTimeout(() => setToast(null), 6000);
+        }
       }
     }
     lastJobStatusRef.current = j.status;
@@ -255,7 +265,8 @@ export default function DashboardPage() {
     loadStats();
     loadJob();
     loadActivity();
-    const t = setInterval(loadJob, 4000);
+    // עדכון מהיר יותר כל 2 שניות כדי שתראי את המונה עולה בזמן אמת
+    const t = setInterval(loadJob, 2000);
     return () => clearInterval(t);
   }, [loadStats, loadJob, loadActivity]);
 
@@ -468,24 +479,100 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* באנר חיפוש פעיל */}
+      {/* באנר חיפוש פעיל - עם ספירה בזמן אמת */}
       {activeJob && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
-          <p className="text-sm font-bold text-amber-900">חיפוש פעיל ברקע</p>
-          <p className="mt-1 text-xs text-amber-800">
-            {activeJob.business_type} ב{activeJob.city} ·{" "}
-            {activeJob.progress_current}/{activeJob.progress_total || activeJob.limit_n}
-          </p>
-          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-amber-200">
+        <div className="rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50 p-4 shadow-md animate-fadeIn">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="dot-live bg-amber-500" />
+                <p className="text-sm font-bold text-amber-900">חיפוש פעיל</p>
+              </div>
+              <p className="mt-1 text-xs text-amber-800">
+                {activeJob.business_type} ב{activeJob.city} · יעד {activeJob.limit_n} לידים
+              </p>
+            </div>
+            <span className="rounded-full bg-amber-200 px-3 py-1 text-xs font-bold text-amber-900">
+              {activeJob.status === "queued" ? "מתחיל..." : "מחפש..."}
+            </span>
+          </div>
+
+          {/* 3 מדדים: נמצאו / נותחו / נשמרו */}
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-lg bg-white/70 backdrop-blur p-2">
+              <div className="text-2xl font-extrabold text-blue-700 tabular-nums">
+                {activeJob.found_count || 0}
+              </div>
+              <div className="text-[10px] text-blue-700 font-semibold">🔍 נמצאו</div>
+            </div>
+            <div className="rounded-lg bg-white/70 backdrop-blur p-2">
+              <div className="text-2xl font-extrabold text-purple-700 tabular-nums">
+                {activeJob.analyzed_count || activeJob.progress_current || 0}
+              </div>
+              <div className="text-[10px] text-purple-700 font-semibold">🧠 נותחו</div>
+            </div>
+            <div className="rounded-lg bg-white/70 backdrop-blur p-2">
+              <div className="text-2xl font-extrabold text-emerald-700 tabular-nums">
+                {activeJob.saved_count || 0}
+              </div>
+              <div className="text-[10px] text-emerald-700 font-semibold">💾 נשמרו</div>
+            </div>
+          </div>
+
+          {/* פס התקדמות */}
+          <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-amber-200">
             <div
-              className="h-full bg-amber-600 transition-all"
+              className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all duration-500"
               style={{
                 width: activeJob.progress_total
                   ? `${Math.min(100, (activeJob.progress_current / activeJob.progress_total) * 100)}%`
-                  : "10%",
+                  : "8%",
               }}
             />
           </div>
+          <p className="mt-1 text-[10px] text-amber-700 text-center">
+            {activeJob.progress_total
+              ? `${activeJob.progress_current} מתוך ${activeJob.progress_total}`
+              : "בודקת מקורות..."}
+          </p>
+        </div>
+      )}
+
+      {/* באנר תוצאת חיפוש אחרון - הצלחה או "לא נמצא" */}
+      {recentJob && recentJob.status === "completed" && recentJob.saved_count === 0 && (
+        <div className="rounded-2xl border-2 border-rose-200 bg-gradient-to-br from-rose-50 to-amber-50 p-4 animate-fadeIn">
+          <p className="text-base font-bold text-rose-900">😕 לא נמצאו לידים</p>
+          <p className="mt-1 text-sm text-rose-800">
+            לחיפוש &quot;{recentJob.business_type}&quot; ב&quot;{recentJob.city}&quot; לא נמצאו עסקים מתאימים.
+          </p>
+          <div className="mt-3 text-xs text-rose-700 space-y-1">
+            <p>💡 הצעות:</p>
+            <p>• נסי עיר גדולה יותר (תל אביב, חיפה, ירושלים)</p>
+            <p>• נסי קטגוריה אחרת (מסעדה, מספרה, רופא שיניים)</p>
+            <p>• בדקי איות העיר באנגלית/עברית</p>
+          </div>
+          <Link
+            href="/search"
+            className="mt-3 inline-block rounded-lg bg-rose-600 px-4 py-2 text-sm font-bold text-white"
+          >
+            🔍 חיפוש חדש
+          </Link>
+        </div>
+      )}
+
+      {/* תוצאה כושלת */}
+      {recentJob && recentJob.status === "failed" && (
+        <div className="rounded-2xl border-2 border-rose-300 bg-rose-50 p-4 animate-fadeIn">
+          <p className="text-base font-bold text-rose-900">❌ החיפוש נכשל</p>
+          <p className="mt-1 text-sm text-rose-800">
+            {recentJob.error_message || "לא נמצאו עסקים. נסי עיר/קטגוריה אחרת."}
+          </p>
+          <Link
+            href="/search"
+            className="mt-3 inline-block rounded-lg bg-rose-600 px-4 py-2 text-sm font-bold text-white"
+          >
+            🔍 נסי שוב
+          </Link>
         </div>
       )}
 
@@ -540,9 +627,9 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      {recentJob && recentJob.status === "completed" && (
+      {recentJob && recentJob.status === "completed" && recentJob.saved_count > 0 && (
         <p className="text-center text-xs text-slate-500">
-          חיפוש אחרון: {recentJob.business_type} · נשמרו {recentJob.saved_count}
+          חיפוש אחרון: {recentJob.business_type} · נשמרו {recentJob.saved_count} לידים
         </p>
       )}
 

@@ -876,17 +876,33 @@ def find_businesses(
     limit: int,
     description: str = "",
     exclude_domains: Optional[set[str]] = None,
+    exclude_phones: Optional[set[str]] = None,
     *,
     only_without_website: bool = False,
 ) -> list[dict]:
     """
     מאתר עסקים ממקורות שונים. מנסה קודם AI (החזק ביותר), ואז Overpass, ואז DuckDuckGo.
     משלב את כל התוצאות ומסיר כפילויות.
-    אם only_without_website=True - מחזיר רק עסקים שאין להם אתר.
+
+    מנגנון נגד-כפילויות (3 שכבות):
+    1. exclude_domains: דומיינים של לידים שכבר נשמרו אצל המשתמש
+    2. exclude_phones: טלפונים מנורמלים של לידים שכבר נשמרו (חשוב במיוחד ל"בלי אתר")
+    3. seen_keys: כפילויות בין מקורות בתוך אותו חיפוש
     """
     exclude_domains = set(exclude_domains or set())
-    seen_keys: set[str] = set()  # דומיינים (כשיש אתר) או שם+טלפון (כשאין)
+    exclude_phones = set(exclude_phones or set())
+    seen_keys: set[str] = set()
+    seen_phones: set[str] = set()
     combined: list[dict] = []
+
+    def _normalize_phone_key(phone: str) -> str:
+        """מנרמל טלפון לקוד-זיהוי אחיד למניעת כפילויות."""
+        d = re.sub(r"\D", "", phone or "")
+        if d.startswith("00"):
+            d = d[2:]
+        if d.startswith("0") and len(d) >= 9:
+            d = "972" + d[1:]
+        return d
 
     def _key_of(r: dict) -> str:
         site = r.get("website", "")
@@ -894,13 +910,17 @@ def find_businesses(
             return _domain_of(site)
         # ללא אתר: dedup לפי שם + טלפון מנורמל
         name = (r.get("name") or "").strip().lower()
-        phone = re.sub(r"\D", "", (r.get("phone") or ""))
+        phone = _normalize_phone_key(r.get("phone") or "")
         return f"{name}|{phone}"
 
     def _add_results(rs: list[dict], source: str):
         added = 0
+        skipped_dup = 0
         for r in rs:
             site = r.get("website", "")
+            phone_norm = _normalize_phone_key(r.get("phone") or "")
+            phone_no_il = phone_norm[3:] if phone_norm.startswith("972") else phone_norm
+
             if only_without_website:
                 # רק עסקים בלי אתר
                 if site:
@@ -913,16 +933,32 @@ def find_businesses(
                     continue
                 d = _domain_of(site)
                 if d in exclude_domains:
+                    skipped_dup += 1
                     continue
+
+            # בדיקת כפילות לפי טלפון (גם לידים קיימים וגם בתוך החיפוש)
+            if phone_norm and (phone_norm in exclude_phones or phone_no_il in exclude_phones):
+                skipped_dup += 1
+                continue
+            if phone_norm and phone_norm in seen_phones:
+                skipped_dup += 1
+                continue
+
             key = _key_of(r)
             if key in seen_keys or key in exclude_domains:
+                skipped_dup += 1
                 continue
             seen_keys.add(key)
+            if phone_norm:
+                seen_phones.add(phone_norm)
             combined.append(r)
             added += 1
             if len(combined) >= limit:
                 break
-        print(f"  [{source}] תרם {added} עסקים חדשים (סה\"כ עד כה: {len(combined)})")
+        msg = f"  [{source}] תרם {added} עסקים חדשים (סה\"כ עד כה: {len(combined)})"
+        if skipped_dup > 0:
+            msg += f" — דוּלגו {skipped_dup} כפולים"
+        print(msg)
 
     mode_tag = "ללא אתר" if only_without_website else "עם אתר"
     print(f"מחפש '{business_type}' ב'{city}' ({mode_tag})...")
@@ -930,6 +966,8 @@ def find_businesses(
         print(f"  תיאור: {description[:120]}")
     if exclude_domains:
         print(f"  מתעלם מ-{len(exclude_domains)} דומיינים שכבר חיפשנו")
+    if exclude_phones:
+        print(f"  מתעלם מ-{len(exclude_phones)} טלפונים שכבר אצלנו (אנטי-כפילויות)")
 
     if only_without_website:
         # מצב "בלי אתר" — רק מקורות אמיתיים, בלי AI שממציא.
@@ -2544,6 +2582,7 @@ def run_pipeline(
     skip_export: bool = False,
     description: str = "",
     exclude_domains: Optional[set[str]] = None,
+    exclude_phones: Optional[set[str]] = None,
     only_without_website: bool = False,
 ) -> dict:
     """
@@ -2576,6 +2615,7 @@ def run_pipeline(
         limit,
         description=description,
         exclude_domains=exclude_domains,
+        exclude_phones=exclude_phones,
         only_without_website=only_without_website,
     )
     if not businesses:
