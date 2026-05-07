@@ -653,6 +653,137 @@ def search_businesses_ddg(city: str, business_type: str, limit: int = 30) -> lis
     return results
 
 
+def search_businesses_social(
+    city: str,
+    business_type: str,
+    limit: int = 30,
+    *,
+    only_without_website: bool = True,
+) -> list[dict]:
+    """
+    מחפש עסקים ישראליים שדף הסושיאל שלהם הוא הנוכחות העיקרית באינטרנט.
+    משתמש ב-DuckDuckGo עם 'site:instagram.com' ו-'site:facebook.com'.
+
+    זה אופייני לעסקים קטנים בישראל - יש להם רק דף אינסטגרם או פייסבוק.
+    אנחנו מחזירים את ה-URL של הדף כ-social_url. הטלפון יוצא בשלב מאוחר יותר
+    (במידה והוא נמצא בתיאור).
+    """
+    try:
+        from duckduckgo_search import DDGS
+    except ImportError:
+        return []
+
+    out: list[dict] = []
+    seen_handles: set[str] = set()
+    queries = [
+        f"site:instagram.com {business_type} {city} ישראל",
+        f"site:facebook.com {business_type} {city} ישראל",
+        f"site:instagram.com {business_type} {city}",
+        f"site:facebook.com {business_type} {city}",
+    ]
+
+    try:
+        with DDGS() as ddgs:
+            for q in queries:
+                if len(out) >= limit:
+                    break
+                try:
+                    results = list(ddgs.text(q, max_results=limit))
+                except Exception:
+                    continue
+                for r in results:
+                    if len(out) >= limit:
+                        break
+                    url = r.get("href") or r.get("url") or ""
+                    title = r.get("title") or ""
+                    body = r.get("body") or ""
+                    if not url:
+                        continue
+
+                    p = urlparse(url)
+                    host = (p.netloc or "").lower().replace("www.", "")
+                    if host not in ("instagram.com", "facebook.com", "fb.com"):
+                        continue
+
+                    # מסנן דפי מערכת/חיפוש - מחפש רק דפי profile/page
+                    path = p.path.strip("/")
+                    if not path:
+                        continue
+                    # אינסטגרם: מתעלמים מ-/p/, /reel/, /explore/, /accounts/
+                    if host == "instagram.com":
+                        if path.startswith(("p/", "reel/", "explore/", "accounts/", "stories/", "tv/")):
+                            continue
+                        # רק handle נקי, בלי תתי-נתיבים
+                        handle = path.split("/")[0]
+                        if not handle or handle.startswith("@"):
+                            continue
+                        clean_url = f"https://www.instagram.com/{handle}/"
+                    elif host in ("facebook.com", "fb.com"):
+                        if path.startswith(("watch/", "events/", "groups/", "marketplace/", "pg/")):
+                            continue
+                        # פייסבוק: pages/Name/ID או handle
+                        handle = path.split("/")[0]
+                        if not handle or handle in ("home.php", "login.php"):
+                            continue
+                        clean_url = f"https://www.facebook.com/{handle}/"
+                    else:
+                        continue
+
+                    if handle.lower() in seen_handles:
+                        continue
+                    seen_handles.add(handle.lower())
+
+                    # ננסה לחלץ טלפון מהסניפט (לפעמים מופיע בתיאור)
+                    phone = _extract_il_phone_from_text(f"{title}\n{body}")
+                    if not phone:
+                        # בלי טלפון אמיתי - לא שווה לכלול את הליד
+                        continue
+                    if not _is_israeli_phone(phone):
+                        continue
+
+                    # שם העסק: מהכותרת אם אפשר, אחרת ה-handle
+                    name = title.split("(")[0].split("|")[0].split("-")[0].strip()
+                    if not name or len(name) < 2:
+                        name = handle.replace("_", " ").replace(".", " ").title()
+
+                    out.append({
+                        "name": name[:100],
+                        "website": "",
+                        "phone": phone,
+                        "email": "",
+                        "address": "",
+                        "social": clean_url,
+                        "source_url": clean_url,
+                        "no_website": True,
+                    })
+    except Exception as e:
+        print(f"  Social search failed: {e}", file=sys.stderr)
+
+    print(
+        f"  Social search returned {len(out)} businesses with verified phones from social media",
+        file=sys.stderr,
+    )
+    return out
+
+
+def _extract_il_phone_from_text(text: str) -> str:
+    """מחלץ טלפון ישראלי מטקסט חופשי. מחזיר ריק אם לא נמצא."""
+    if not text:
+        return ""
+    # תבניות טלפון ישראלי: 050-1234567, 03-1234567, +972-XX-XXXXXXX
+    patterns = [
+        r"\+972[-\s]?\d{1,2}[-\s]?\d{3}[-\s]?\d{4}",
+        r"0\d{1,2}[-\s]?\d{3}[-\s]?\d{4}",
+        r"0\d{2}[-\s]?\d{7}",
+        r"05\d[-\s]?\d{7}",
+    ]
+    for pat in patterns:
+        m = re.search(pat, text)
+        if m:
+            return m.group(0)
+    return ""
+
+
 _DOMAIN_BLACKLIST = {
     "facebook.com", "instagram.com", "youtube.com", "google.com",
     "yelp.com", "tripadvisor.com", "tripadvisor.co.il", "wikipedia.org",
@@ -970,13 +1101,14 @@ def find_businesses(
         print(f"  מתעלם מ-{len(exclude_phones)} טלפונים שכבר אצלנו (אנטי-כפילויות)")
 
     if only_without_website:
-        # מצב "בלי אתר" — רק מקורות אמיתיים, בלי AI שממציא.
+        # מצב "בלי אתר" — 3 מקורות אמיתיים בלבד, בלי AI שממציא.
         # סדר עדיפויות:
-        # 1. Google Places (אם יש מפתח) - הכי אמין, הכי הרבה תוצאות
-        # 2. OpenStreetMap - נתוני קהילה, אמיתיים אבל פחות תוצאות
+        # 1. Google Places (אם יש מפתח) - הכי אמין
+        # 2. OpenStreetMap - נתוני קהילה
+        # 3. אינסטגרם/פייסבוק - חיפוש ב-DuckDuckGo עם site: operator
         google_key = os.environ.get("GOOGLE_PLACES_API_KEY", "").strip()
         if google_key:
-            print("  [1/2] Google Places API - מקור אמין מקסימלי...")
+            print("  [1/3] Google Places API - מקור אמין מקסימלי...")
             gp_results = search_businesses_google_places(
                 city, business_type, limit,
                 only_without_website=True,
@@ -985,12 +1117,21 @@ def find_businesses(
             if len(combined) >= limit:
                 return combined[:limit]
 
-        print("  [2/2] OpenStreetMap - גיבוי קהילתי...")
+        print("  [2/3] OpenStreetMap - נתוני קהילה...")
         osm_results = search_businesses_overpass(
             city, business_type, limit,
             only_without_website=True,
         )
         _add_results(osm_results, "OSM")
+        if len(combined) >= limit:
+            return combined[:limit]
+
+        print("  [3/3] חיפוש באינסטגרם/פייסבוק...")
+        social_results = search_businesses_social(
+            city, business_type, limit,
+            only_without_website=True,
+        )
+        _add_results(social_results, "Social")
         if len(combined) == 0:
             if not google_key:
                 print(
