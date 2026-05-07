@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { quickStatus, patchLead, logActivity } from "../_components/useLeads";
+import { TrustBadgeSmall } from "../_components/TrustBadge";
 
 type Lead = Record<string, unknown> & { id: string };
 
@@ -27,6 +28,47 @@ function telHref(phone: string): string | null {
   if (d.startsWith("972")) return `tel:+${d}`;
   if (d.startsWith("0")) return `tel:+972${d.slice(1)}`;
   return `tel:+${d}`;
+}
+
+function detectSocialPlatform(url: string): {
+  platform: "instagram" | "facebook" | "gmaps" | "other";
+  emoji: string;
+  label: string;
+  dmUrl: string;
+  bgClass: string;
+} | null {
+  if (!url) return null;
+  const u = url.toLowerCase();
+  if (u.includes("instagram.com")) {
+    const handle = url.split("instagram.com/")[1]?.split("/")[0]?.split("?")[0] || "";
+    return {
+      platform: "instagram",
+      emoji: "📸",
+      label: "Instagram DM",
+      dmUrl: handle ? `https://www.instagram.com/${handle}/` : url,
+      bgClass: "bg-gradient-to-r from-pink-500 to-orange-500",
+    };
+  }
+  if (u.includes("facebook.com") || u.includes("fb.com")) {
+    const handle = url.split("facebook.com/")[1]?.split("/")[0]?.split("?")[0] || "";
+    return {
+      platform: "facebook",
+      emoji: "💬",
+      label: "Messenger",
+      dmUrl: handle && !handle.includes(".") ? `https://m.me/${handle}` : url,
+      bgClass: "bg-gradient-to-r from-blue-600 to-blue-700",
+    };
+  }
+  if (u.includes("google.com/maps") || u.includes("maps.google")) {
+    return {
+      platform: "gmaps",
+      emoji: "🗺️",
+      label: "Google Maps",
+      dmUrl: url,
+      bgClass: "bg-gradient-to-r from-emerald-600 to-teal-600",
+    };
+  }
+  return null;
 }
 
 function todayISO() {
@@ -247,9 +289,28 @@ export default function CallModePage() {
               </span>
             )}
           </div>
+          {/* סימן אמינות - מאיפה הליד הזה הגיע */}
+          <div className="mt-2">
+            <TrustBadgeSmall lead={current} />
+          </div>
           <p className="mt-3 text-2xl font-bold text-emerald-700 tracking-wider">
             📞 {phone}
           </p>
+          {/* כפתור הודעה ישירה ב-Instagram/Facebook אם רלוונטי */}
+          {(() => {
+            const social = detectSocialPlatform(String(current.social_url || ""));
+            if (!social) return null;
+            return (
+              <a
+                href={social.dmUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`mt-2 block ${social.bgClass} rounded-xl px-4 py-2.5 text-center text-sm font-bold text-white shadow-md btn-pop`}
+              >
+                {social.emoji} שליחת הודעה ב-{social.label}
+              </a>
+            );
+          })()}
         </div>
 
         {/* הזווית לשיחה */}

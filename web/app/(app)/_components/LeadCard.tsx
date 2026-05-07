@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { TrustBadgeSmall } from "./TrustBadge";
 
 export type LeadCardData = {
   id: string;
@@ -15,6 +16,7 @@ export type LeadCardData = {
   match_score?: number;
   match_reason?: string;
   no_website?: boolean;
+  social_url?: string;
   strongest_problem?: string;
   business_impact?: string;
   opening_line?: string;
@@ -26,6 +28,8 @@ export type LeadCardData = {
   search_city?: string;
   search_business_type?: string;
   domain_age_years?: number;
+  google_rating?: number;
+  google_review_count?: number;
 };
 
 export function telHref(phone: string | undefined): string | null {
@@ -97,6 +101,10 @@ export default function LeadCard({ lead, primaryAction, secondaryActions }: Prop
               {lead.grade || "—"}/{lead.score || 0}
             </span>
           </div>
+        </div>
+
+        <div className="mt-1 flex items-center gap-1 flex-wrap">
+          <TrustBadgeSmall lead={lead as Record<string, unknown>} />
         </div>
 
         <p className="mt-1 text-xs text-slate-500">

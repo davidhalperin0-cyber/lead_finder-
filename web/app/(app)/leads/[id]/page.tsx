@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { apiFetch } from "@/lib/api";
+import { TrustBadgeFull } from "../../_components/TrustBadge";
 
 type Lead = Record<string, unknown>;
 
@@ -39,6 +40,59 @@ function ensureHttps(raw: string): string {
   if (s.startsWith("//")) return `https:${s}`;
   // נראה כמו דומיין רגיל
   return `https://${s.replace(/^\/+/, "")}`;
+}
+
+/**
+ * מזהה את סוג ה-URL החברתי ומחזיר אובייקט עם פרטי הפלטפורמה.
+ * תומך באינסטגרם, פייסבוק, ו-Google Maps.
+ */
+function detectSocialPlatform(url: string): {
+  platform: "instagram" | "facebook" | "gmaps" | "other";
+  label: string;
+  emoji: string;
+  dmUrl: string;
+  bgClass: string;
+} | null {
+  if (!url) return null;
+  const u = url.toLowerCase();
+  if (u.includes("instagram.com")) {
+    // אינסטגרם DM: שולחים ל-/direct/new עם handle
+    const handle = url.split("instagram.com/")[1]?.split("/")[0]?.split("?")[0] || "";
+    return {
+      platform: "instagram",
+      label: "שליחת הודעה באינסטגרם",
+      emoji: "📸",
+      dmUrl: handle ? `https://www.instagram.com/${handle}/` : url,
+      bgClass: "bg-gradient-to-r from-pink-500 to-orange-500",
+    };
+  }
+  if (u.includes("facebook.com") || u.includes("fb.com")) {
+    // פייסבוק Messenger: m.me/{handle}
+    const handle = url.split("facebook.com/")[1]?.split("/")[0]?.split("?")[0] || "";
+    return {
+      platform: "facebook",
+      label: "שליחת הודעה ב-Messenger",
+      emoji: "💬",
+      dmUrl: handle && !handle.includes(".") ? `https://m.me/${handle}` : url,
+      bgClass: "bg-gradient-to-r from-blue-600 to-blue-700",
+    };
+  }
+  if (u.includes("google.com/maps") || u.includes("maps.google")) {
+    return {
+      platform: "gmaps",
+      label: "פתיחה ב-Google Maps",
+      emoji: "🗺️",
+      dmUrl: url,
+      bgClass: "bg-gradient-to-r from-emerald-600 to-teal-600",
+    };
+  }
+  return {
+    platform: "other",
+    label: "פתיחת קישור",
+    emoji: "🔗",
+    dmUrl: url,
+    bgClass: "bg-slate-600",
+  };
 }
 
 export default function LeadDetailPage() {
@@ -256,6 +310,20 @@ export default function LeadDetailPage() {
               WhatsApp (ידני)
             </a>
           )}
+          {(() => {
+            const social = detectSocialPlatform(socialUrl);
+            if (!social) return null;
+            return (
+              <a
+                href={social.dmUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`rounded-lg px-3 py-2 text-sm font-bold text-white ${social.bgClass} shadow-md btn-pop`}
+              >
+                {social.emoji} {social.platform === "gmaps" ? "Google Maps" : social.platform === "instagram" ? "Instagram DM" : social.platform === "facebook" ? "Messenger" : "סושיאל"}
+              </a>
+            );
+          })()}
           <button
             type="button"
             onClick={() => copyText(opening)}
@@ -263,6 +331,11 @@ export default function LeadDetailPage() {
           >
             העתקת משפט פתיחה
           </button>
+        </div>
+
+        {/* סימן אמינות - מאיפה הליד הזה הגיע */}
+        <div className="mt-3">
+          <TrustBadgeFull lead={lead} />
         </div>
       </div>
 
@@ -478,7 +551,7 @@ export default function LeadDetailPage() {
       )}
 
       {noWebsite && (
-        <section className="rounded-xl border-2 border-amber-400 bg-gradient-to-br from-amber-50 to-orange-50 p-5">
+        <section className="rounded-2xl border-2 border-amber-400 bg-gradient-to-br from-amber-50 to-orange-50 p-5 shadow-md">
           <h2 className="text-lg font-bold text-amber-900 mb-2">
             🔥 הזדמנות זהב — עסק בלי אתר
           </h2>
@@ -486,16 +559,39 @@ export default function LeadDetailPage() {
             לעסק הזה <strong>אין אתר אינטרנט</strong>. זה הליד הכי שווה שיש — הם צריכים אתר חדש מאפס,
             ואת יכולה להציע להם את כל החבילה (דומיין, אחסון, עיצוב).
           </p>
-          {socialUrl && (
-            <a
-              href={socialUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white"
-            >
-              דף הסושיאל שלהם →
-            </a>
-          )}
+          {(() => {
+            const social = detectSocialPlatform(socialUrl);
+            if (!social) {
+              return (
+                <p className="text-xs text-amber-700 italic">
+                  אין קישור סושיאל — נסי לחייג טלפונית
+                </p>
+              );
+            }
+            return (
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-amber-800">
+                  💡 דרך מקבילה לחיוג: שליחת הודעה דרך הסושיאל שלהם
+                </p>
+                <a
+                  href={social.dmUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`block ${social.bgClass} rounded-xl px-4 py-3 text-center text-base font-bold text-white shadow-lg btn-pop`}
+                >
+                  {social.emoji} {social.label}
+                </a>
+                <a
+                  href={socialUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-center text-xs text-amber-700 underline"
+                >
+                  לראות את הדף שלהם תחילה
+                </a>
+              </div>
+            );
+          })()}
         </section>
       )}
 

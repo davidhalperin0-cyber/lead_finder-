@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { quickStatus, logActivity } from "../../_components/useLeads";
+import { TrustBadgeSmall } from "../../_components/TrustBadge";
 
 type Lead = Record<string, unknown> & { id: string };
 
@@ -189,6 +190,9 @@ export default function HotLeadsPage() {
                         {String(L.search_city || "")}{" "}
                         {L.search_business_type ? "· " + L.search_business_type : ""}
                       </p>
+                      <div className="mt-1">
+                        <TrustBadgeSmall lead={L} />
+                      </div>
                     </div>
                     <div className="shrink-0 flex flex-col items-end gap-1">
                       <span
