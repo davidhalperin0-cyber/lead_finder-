@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { apiFetch } from "@/lib/api";
 
 type Job = {
   id: string;
@@ -149,13 +148,74 @@ export default function DashboardPage() {
   }, []);
 
   const loadStats = useCallback(async () => {
-    setLoading(true);
+    // אופטימיזציה: טוענים סטטים ישר מ-Supabase במקום מ-Render
+    // (חוסך 50+ שניות של cold start). הנתונים זהים, אבל מהירים פי 100.
     try {
       const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-      const data = await apiFetch<Pipeline>("/api/stats/pipeline", session.access_token);
-      setStats(data);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      // ניסיון לטעון מהקאש המקומי קודם - הצגה מיידית של נתונים אחרונים
+      const cacheKey = `dash-stats-${user.id}`;
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          setStats(JSON.parse(cached) as Pipeline);
+          setLoading(false);
+        }
+      } catch {
+        /* ignore localStorage errors */
+      }
+
+      // עכשיו שאילתה מ-Supabase - זה מיידי
+      const { data } = await supabase
+        .from("leads")
+        .select("status,created_at,follow_up_date,deal_amount")
+        .eq("user_id", user.id)
+        .limit(20000);
+
+      const rows = data || [];
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const counts: Pipeline = {
+        new: { total: 0, today: 0 },
+        in_progress: { total: 0, today: 0 },
+        interested: { total: 0, today: 0 },
+        follow_up: { total: 0, today: 0 },
+        not_interested: { total: 0, today: 0 },
+        won: { total: 0, today: 0 },
+        lost: { total: 0, today: 0 },
+        follow_up_due: { total: 0, today: 0 },
+      };
+      let dealsTotal = 0;
+
+      for (const row of rows) {
+        const s = row.status || "new";
+        if (counts[s]) {
+          counts[s].total += 1;
+          if ((row.created_at || "").slice(0, 10) === todayStr) {
+            counts[s].today += 1;
+          }
+        }
+        const fud = row.follow_up_date;
+        if (fud && s === "follow_up" && fud <= todayStr) {
+          counts.follow_up_due!.total += 1;
+        }
+        if (s === "won") {
+          dealsTotal += Number(row.deal_amount || 0);
+        }
+      }
+      counts._meta = { deals_total: Math.round(dealsTotal) };
+      setStats(counts);
+
+      // שומרים בקאש לפעם הבאה
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(counts));
+      } catch {
+        /* ignore */
+      }
     } catch {
       /* ignore */
     } finally {
@@ -202,6 +262,7 @@ export default function DashboardPage() {
   const dealsTotal = stats?._meta?.deals_total || 0;
   const followDue = stats?.follow_up_due?.total || 0;
   const newToday = stats?.new?.today || 0;
+  const isLoadingFresh = loading && stats === null; // טוען בלי קאש
 
   // ===== חישובי גרפים =====
   const totalLeads = STAGES.reduce(
@@ -239,16 +300,34 @@ export default function DashboardPage() {
           <div className="mt-4 grid grid-cols-3 gap-2">
             <div className="rounded-xl bg-white/10 backdrop-blur p-3 border border-white/10">
               <p className="text-xs opacity-80">סה&quot;כ נסגר</p>
-              <p className="text-lg font-bold">₪{dealsTotal.toLocaleString()}</p>
+              <p className="text-lg font-bold">
+                {isLoadingFresh ? (
+                  <span className="inline-block h-5 w-16 rounded bg-white/20 animate-pulse" />
+                ) : (
+                  `₪${dealsTotal.toLocaleString()}`
+                )}
+              </p>
             </div>
             <div className="rounded-xl bg-white/10 backdrop-blur p-3 border border-white/10">
               <p className="text-xs opacity-80">חדשים היום</p>
-              <p className="text-lg font-bold">{newToday}</p>
+              <p className="text-lg font-bold">
+                {isLoadingFresh ? (
+                  <span className="inline-block h-5 w-8 rounded bg-white/20 animate-pulse" />
+                ) : (
+                  newToday
+                )}
+              </p>
               <span className="text-[10px] opacity-70">לידים</span>
             </div>
             <div className="rounded-xl bg-white/10 backdrop-blur p-3 border border-white/10">
               <p className="text-xs opacity-80">מעקב היום</p>
-              <p className="text-lg font-bold">{followDue}</p>
+              <p className="text-lg font-bold">
+                {isLoadingFresh ? (
+                  <span className="inline-block h-5 w-8 rounded bg-white/20 animate-pulse" />
+                ) : (
+                  followDue
+                )}
+              </p>
               <span className="text-[10px] opacity-70">שיחות</span>
             </div>
           </div>

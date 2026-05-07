@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { quickStatus } from "../../_components/useLeads";
+import { quickStatus, logActivity } from "../../_components/useLeads";
 
 type Lead = Record<string, unknown> & { id: string };
 
@@ -53,13 +53,19 @@ export default function HotLeadsPage() {
   async function load() {
     setLoading(true);
     const supabase = createClient();
+    // רק לידים שעדיין לא נסגרו - מתעניינים/מעקב יש להם עמודים משלהם
     const { data } = await supabase
       .from("leads")
       .select("*")
-      .in("status", ["new", "in_progress", "interested", "follow_up"])
+      .in("status", ["new", "in_progress"])
       .limit(200);
     setLeads((data as Lead[]) || []);
     setLoading(false);
+  }
+
+  // הסרה מקומית מהמסך - בלי להמתין לרענון מהשרת
+  function removeFromList(id: string) {
+    setLeads((curr) => curr.filter((L) => L.id !== id));
   }
 
   useEffect(() => {
@@ -73,12 +79,37 @@ export default function HotLeadsPage() {
       .slice(0, 25);
   }, [leads]);
 
-  async function markHot(id: string) {
+  async function markInterested(id: string) {
     if (busy) return;
     setBusy(id);
     try {
-      await quickStatus(id, "hot");
-      await load();
+      await logActivity(id, { activity_type: "call", outcome: "interested" });
+      await quickStatus(id, "interested");
+      removeFromList(id);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function markNoAnswer(id: string) {
+    if (busy) return;
+    setBusy(id);
+    try {
+      await logActivity(id, { activity_type: "call", outcome: "no_answer" });
+      // לא משנה סטטוס - רק מסיר מהרשימה הנוכחית כדי שלא נחזור אליו
+      removeFromList(id);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function markNotInterested(id: string) {
+    if (busy) return;
+    setBusy(id);
+    try {
+      await logActivity(id, { activity_type: "call", outcome: "not_interested" });
+      await quickStatus(id, "not_interested");
+      removeFromList(id);
     } finally {
       setBusy(null);
     }
@@ -203,29 +234,44 @@ export default function HotLeadsPage() {
                   )}
 
                   {/* פעולות */}
-                  <div className="mt-3 flex gap-2">
+                  <div className="mt-3 space-y-2">
                     {tel && (
                       <a
                         href={tel}
-                        className="flex-1 rounded-xl bg-gradient-success py-2.5 text-center text-sm font-bold text-white btn-pop shadow-md"
+                        className="block rounded-xl bg-gradient-success py-3 text-center text-base font-bold text-white btn-pop shadow-md"
                       >
                         📞 חיוג
                       </a>
                     )}
-                    {status !== "interested" && (
+                    {/* כפתורי תוצאת השיחה - אחרי החיוג */}
+                    <div className="grid grid-cols-3 gap-1.5">
                       <button
-                        onClick={() => markHot(L.id)}
+                        onClick={() => markInterested(L.id)}
                         disabled={busy === L.id}
-                        className="rounded-xl bg-gradient-hot px-4 py-2.5 text-sm font-bold text-white btn-pop disabled:opacity-50"
+                        className="rounded-lg bg-emerald-100 hover:bg-emerald-200 py-2 text-xs font-bold text-emerald-800 btn-pop disabled:opacity-50"
                       >
-                        🔥 מעניין
+                        ✅ מעוניין
                       </button>
-                    )}
+                      <button
+                        onClick={() => markNoAnswer(L.id)}
+                        disabled={busy === L.id}
+                        className="rounded-lg bg-amber-100 hover:bg-amber-200 py-2 text-xs font-bold text-amber-800 btn-pop disabled:opacity-50"
+                      >
+                        📵 לא ענה
+                      </button>
+                      <button
+                        onClick={() => markNotInterested(L.id)}
+                        disabled={busy === L.id}
+                        className="rounded-lg bg-rose-100 hover:bg-rose-200 py-2 text-xs font-bold text-rose-800 btn-pop disabled:opacity-50"
+                      >
+                        ❌ לא מעוניין
+                      </button>
+                    </div>
                     <Link
                       href={`/leads/${L.id}`}
-                      className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700"
+                      className="block rounded-xl border border-slate-200 py-2 text-center text-xs font-medium text-slate-600"
                     >
-                      פרטים
+                      פתיחת פרטים מלאים
                     </Link>
                   </div>
                 </div>

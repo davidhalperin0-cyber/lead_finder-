@@ -479,6 +479,141 @@ def search_businesses_overpass(
     return []
 
 
+def search_businesses_google_places(
+    city: str,
+    business_type: str,
+    limit: int = 50,
+    *,
+    only_without_website: bool = False,
+) -> list[dict]:
+    """
+    Google Places API (New) — המקור האמין ביותר. מחזיר עסקים אמיתיים
+    עם טלפונים מאומתים על ידי Google.
+
+    דורש משתנה סביבה: GOOGLE_PLACES_API_KEY
+    מחיר: ~$32/1000 חיפושים, ~$17/1000 פרטים. עם הקרדיט החינמי של Google ($300)
+    אפשר לעשות אלפי חיפושים בלי תשלום.
+
+    אם only_without_website=True - מחזיר רק עסקים שאין להם websiteUri.
+    """
+    api_key = (os.environ.get("GOOGLE_PLACES_API_KEY") or "").strip()
+    if not api_key:
+        print("  Google Places: אין GOOGLE_PLACES_API_KEY, מדלג", file=sys.stderr)
+        return []
+
+    text_query = f"{business_type} ב{city} ישראל"
+    url = "https://places.googleapis.com/v1/places:searchText"
+    # שדות שאנחנו צריכים בלבד — Google גובה לפי שדות
+    field_mask = (
+        "places.id,places.displayName,places.formattedAddress,"
+        "places.nationalPhoneNumber,places.internationalPhoneNumber,"
+        "places.websiteUri,places.googleMapsUri,places.location,"
+        "places.businessStatus,places.types,places.rating,places.userRatingCount"
+    )
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": api_key,
+        "X-Goog-FieldMask": field_mask,
+    }
+    body = {
+        "textQuery": text_query,
+        "languageCode": "he",
+        "regionCode": "IL",
+        "pageSize": min(limit * 2, 20),  # לוקחים יותר כדי לסנן בלי-אתר
+    }
+
+    all_places: list[dict] = []
+    next_token: str | None = None
+    pages = 0
+    max_pages = 3  # עד 3 דפים = עד 60 תוצאות
+
+    while pages < max_pages:
+        if next_token:
+            body["pageToken"] = next_token
+        try:
+            r = requests.post(url, headers=headers, json=body, timeout=20)
+            if r.status_code != 200:
+                print(
+                    f"  Google Places error {r.status_code}: {r.text[:200]}",
+                    file=sys.stderr,
+                )
+                break
+            data = r.json()
+        except Exception as e:
+            print(f"  Google Places request failed: {e}", file=sys.stderr)
+            break
+
+        places = data.get("places", []) or []
+        all_places.extend(places)
+        next_token = data.get("nextPageToken")
+        pages += 1
+        if not next_token or len(all_places) >= limit * 2:
+            break
+
+    out: list[dict] = []
+    seen_keys: set[str] = set()
+    for p in all_places:
+        # סטטוס עסק - אם סגור לצמיתות, דלג
+        if p.get("businessStatus") in ("CLOSED_PERMANENTLY", "CLOSED_TEMPORARILY"):
+            continue
+        # שם
+        name = ""
+        if isinstance(p.get("displayName"), dict):
+            name = (p["displayName"].get("text") or "").strip()
+        if not name:
+            continue
+        # טלפון
+        phone = (p.get("nationalPhoneNumber") or p.get("internationalPhoneNumber") or "").strip()
+        if not phone:
+            continue
+        if not _is_israeli_phone(phone):
+            continue
+        # אתר
+        website = (p.get("websiteUri") or "").strip()
+
+        if only_without_website:
+            if website:
+                continue
+        else:
+            if not website:
+                continue
+            if not website.startswith(("http://", "https://")):
+                website = "https://" + website
+            if _is_blacklisted_domain(website):
+                continue
+
+        # קישור ל-Google Maps של העסק - אמיתי לחלוטין
+        google_maps_url = (p.get("googleMapsUri") or "").strip()
+
+        # de-dup
+        key = website or f"{name.lower()}|{re.sub(chr(92) + 'D', '', phone)}"
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+
+        out.append({
+            "name": name,
+            "website": website if not only_without_website else "",
+            "phone": phone,
+            "email": "",  # Google Places לא מחזיר אימייל
+            "address": (p.get("formattedAddress") or "").strip(),
+            "social": google_maps_url if only_without_website else "",
+            "source_url": google_maps_url,
+            "no_website": only_without_website,
+            "google_rating": p.get("rating"),
+            "google_review_count": p.get("userRatingCount"),
+        })
+        if len(out) >= limit:
+            break
+
+    tag = "without website" if only_without_website else "with website"
+    print(
+        f"  Google Places returned {len(out)} verified businesses ({tag})",
+        file=sys.stderr,
+    )
+    return out
+
+
 def search_businesses_ddg(city: str, business_type: str, limit: int = 30) -> list[dict]:
     """גיבוי: חיפוש דרך DuckDuckGo (דורש: pip install duckduckgo-search)."""
     try:
@@ -797,27 +932,53 @@ def find_businesses(
         print(f"  מתעלם מ-{len(exclude_domains)} דומיינים שכבר חיפשנו")
 
     if only_without_website:
-        # ⚠️ במצב "בלי אתר" — אסור AI! אסור! AI ממציא טלפונים גם כשאומרים לו לא.
-        # אנחנו מסתמכים אך ורק על OpenStreetMap — נתונים שתרמו אנשים אמיתיים,
-        # שעוברים ולידציה של קהילת OSM. כל טלפון שם הוא אמיתי.
-        print("  [OSM בלבד] מקור אמין - בלי AI, בלי הזיות, רק נתונים אמיתיים")
+        # מצב "בלי אתר" — רק מקורות אמיתיים, בלי AI שממציא.
+        # סדר עדיפויות:
+        # 1. Google Places (אם יש מפתח) - הכי אמין, הכי הרבה תוצאות
+        # 2. OpenStreetMap - נתוני קהילה, אמיתיים אבל פחות תוצאות
+        google_key = os.environ.get("GOOGLE_PLACES_API_KEY", "").strip()
+        if google_key:
+            print("  [1/2] Google Places API - מקור אמין מקסימלי...")
+            gp_results = search_businesses_google_places(
+                city, business_type, limit,
+                only_without_website=True,
+            )
+            _add_results(gp_results, "Google Places")
+            if len(combined) >= limit:
+                return combined[:limit]
+
+        print("  [2/2] OpenStreetMap - גיבוי קהילתי...")
         osm_results = search_businesses_overpass(
             city, business_type, limit,
             only_without_website=True,
         )
         _add_results(osm_results, "OSM")
         if len(combined) == 0:
-            print(
-                "  ⚠️  לא נמצאו עסקים בלי אתר ב-OSM לקטגוריה הזו בעיר הזו.\n"
-                "  💡 הצעות:\n"
-                "     1. נסי עיר גדולה יותר (תל אביב, חיפה, ירושלים)\n"
-                "     2. נסי קטגוריה אחרת\n"
-                "     3. או חפשי 'עם אתר' — שם יש יותר תוצאות אמינות.",
-                file=sys.stderr,
-            )
+            if not google_key:
+                print(
+                    "  ⚠️  לא נמצאו עסקים בלי אתר ב-OSM.\n"
+                    "  💡 הוסיפי GOOGLE_PLACES_API_KEY ב-Render כדי לקבל המון יותר תוצאות!",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    "  ⚠️  לא נמצאו עסקים בלי אתר. נסי עיר/קטגוריה אחרת.",
+                    file=sys.stderr,
+                )
     else:
-        # במצב "עם אתר" — AI יעיל יותר כי יש URL לאמת
-        print("  [1] מנסה AI (gpt-4o-mini-search-preview)...")
+        # במצב "עם אתר" — Google Places ראשון (הכי אמיתי), אחר כך AI/OSM
+        google_key = os.environ.get("GOOGLE_PLACES_API_KEY", "").strip()
+        if google_key:
+            print("  [1] Google Places API...")
+            gp_results = search_businesses_google_places(
+                city, business_type, limit,
+                only_without_website=False,
+            )
+            _add_results(gp_results, "Google Places")
+            if len(combined) >= limit:
+                return combined[:limit]
+
+        print("  [2] AI (gpt-4o-mini-search-preview)...")
         ai_results = search_businesses_ai(
             city, business_type, description, limit,
             exclude_domains | seen_keys,
@@ -827,7 +988,7 @@ def find_businesses(
         if len(combined) >= limit:
             return combined[:limit]
 
-        print("  [2] משלים עם OpenStreetMap Overpass...")
+        print("  [3] OpenStreetMap Overpass...")
         osm_results = search_businesses_overpass(
             city, business_type, limit,
             only_without_website=False,
@@ -836,7 +997,7 @@ def find_businesses(
         if len(combined) >= limit:
             return combined[:limit]
 
-        print("  [3] משלים עם DuckDuckGo...")
+        print("  [4] DuckDuckGo...")
         ddg_results = search_businesses_ddg(city, business_type, limit)
         _add_results(ddg_results, "DDG")
 
