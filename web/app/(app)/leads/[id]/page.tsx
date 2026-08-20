@@ -162,11 +162,13 @@ export default function LeadDetailPage() {
     }
   }
 
-  async function remove() {
+  async function remove(scope: "lead" | "brand" = "lead") {
     const businessName = String(lead?.business_name || "הליד");
-    const ok = window.confirm(
-      `למחוק את "${businessName}" לצמיתות? אי אפשר לשחזר.`
-    );
+    const msg =
+      scope === "brand"
+        ? `להסיר את כל הרשת של "${businessName}"?\n\nכל הסניפים יימחקו, וגם סניפים שעוד לא נמצאו לא יופיעו בחיפושים הבאים.`
+        : `להסיר את "${businessName}"?\n\nהליד לא יחזור בחיפושים הבאים.`;
+    const ok = window.confirm(msg);
     if (!ok) return;
     setDeleting(true);
     const supabase = createClient();
@@ -178,10 +180,14 @@ export default function LeadDetailPage() {
       return;
     }
     try {
-      await apiFetch(`/api/leads/${id}`, session.access_token, {
-        method: "DELETE",
-      });
-      setToast("נמחק");
+      const res = await apiFetch<{ deleted: number }>(
+        `/api/leads/${id}?scope=${scope}`,
+        session.access_token,
+        { method: "DELETE" }
+      );
+      setToast(
+        scope === "brand" ? `הוסרו ${res?.deleted ?? 1} סניפים` : "הוסר — לא יחזור"
+      );
       // חזרה לדאשבורד אחרי המחיקה
       setTimeout(() => router.push("/dashboard"), 600);
     } catch (e: unknown) {
@@ -265,14 +271,24 @@ export default function LeadDetailPage() {
         <Link href="/dashboard" className="text-sm text-brand">
           ← חזרה לרשימה
         </Link>
-        <button
-          onClick={remove}
-          disabled={deleting}
-          className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-          title="מחיקה לצמיתות"
-        >
-          {deleting ? "מוחק..." : "🗑️ מחק לצמיתות"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => remove("lead")}
+            disabled={deleting}
+            className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+            title="הליד יוסר ולא יחזור בחיפושים הבאים"
+          >
+            {deleting ? "מסיר..." : "🗑️ הסר ליד"}
+          </button>
+          <button
+            onClick={() => remove("brand")}
+            disabled={deleting}
+            className="rounded-md border border-rose-400 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-900 hover:bg-rose-100 disabled:opacity-50"
+            title="לרשתות כמו ארומה — מסיר את כל הסניפים, גם עתידיים"
+          >
+            הסר את כל הרשת
+          </button>
+        </div>
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

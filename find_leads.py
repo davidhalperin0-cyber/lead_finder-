@@ -876,6 +876,7 @@ def find_businesses(
     description: str = "",
     exclude_domains: Optional[set[str]] = None,
     exclude_phones: Optional[set[str]] = None,
+    exclude_brands: Optional[set[str]] = None,
     *,
     only_without_website: bool = False,
 ) -> list[dict]:
@@ -890,6 +891,7 @@ def find_businesses(
     """
     exclude_domains = set(exclude_domains or set())
     exclude_phones = set(exclude_phones or set())
+    exclude_brands = set(exclude_brands or set())
     seen_keys: set[str] = set()
     seen_phones: set[str] = set()
     combined: list[dict] = []
@@ -940,6 +942,14 @@ def find_businesses(
                 skipped_dup += 1
                 continue
             if phone_norm and phone_norm in seen_phones:
+                skipped_dup += 1
+                continue
+
+            # מותג מושתק — הליד נמחק בעבר עם scope=brand (למשל ארומה),
+            # אז כל סניפי הרשת חסומים, גם כאלה שלא נמצאו עדיין.
+            if exclude_brands and any(
+                wp.brand_matches(r.get("name") or "", b) for b in exclude_brands
+            ):
                 skipped_dup += 1
                 continue
 
@@ -2610,6 +2620,7 @@ def run_pipeline(
     description: str = "",
     exclude_domains: Optional[set[str]] = None,
     exclude_phones: Optional[set[str]] = None,
+    exclude_brands: Optional[set[str]] = None,
     only_without_website: bool = False,
 ) -> dict:
     """
@@ -2643,6 +2654,7 @@ def run_pipeline(
         description=description,
         exclude_domains=exclude_domains,
         exclude_phones=exclude_phones,
+        exclude_brands=exclude_brands,
         only_without_website=only_without_website,
     )
     if not businesses:

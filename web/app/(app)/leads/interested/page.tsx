@@ -92,6 +92,7 @@ export default function InterestedPage() {
             <li key={id}>
               <LeadCard
                 lead={L as LeadCardData}
+                onDeleted={() => reload()}
                 primaryAction={{
                   label: busy === id ? "..." : "💰 סגור עסקה",
                   tone: "emerald",

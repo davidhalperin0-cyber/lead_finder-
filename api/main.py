@@ -10,11 +10,11 @@ from __future__ import annotations
 import csv
 import io
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Optional
 
-import jwt
 import requests
 from openpyxl import Workbook
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query, Response
@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import web_presence as wp  # noqa: E402
 from find_leads import (  # noqa: E402
     NoBusinessesFound,
     _load_env_file,
@@ -221,13 +222,37 @@ def _run_search_job(job_id: str, user_id: str, body: SearchBody) -> None:
                         # גם בלי 972 לחיזוק ההגנה
                         if digits.startswith("972"):
                             exclude_phones.add(digits[3:])
-            print(
-                f"[SEARCH] excluding {len(exclude_domains)} domains + "
-                f"{len(exclude_phones)} phones from this user",
-                flush=True,
-            )
         except Exception as e:
             print(f"[SEARCH] failed to load existing identifiers: {e}", flush=True)
+
+        # לידים שנמחקו — לא מחזירים אותם לעולם.
+        exclude_brands: set[str] = set()
+        try:
+            supp = (
+                sb.table("suppressed_leads")
+                .select("site_key,phone_norm,brand_key")
+                .eq("user_id", user_id)
+                .limit(20000)
+                .execute()
+            )
+            for s in (getattr(supp, "data", None) or []):
+                if s.get("site_key"):
+                    exclude_domains.add(s["site_key"].strip())
+                if s.get("phone_norm"):
+                    d = s["phone_norm"].strip()
+                    exclude_phones.add(d)
+                    if d.startswith("972"):
+                        exclude_phones.add(d[3:])
+                if s.get("brand_key"):
+                    exclude_brands.add(s["brand_key"].strip())
+        except Exception as e:
+            print(f"[SEARCH] failed to load suppressions: {e}", flush=True)
+
+        print(
+            f"[SEARCH] excluding {len(exclude_domains)} domains + "
+            f"{len(exclude_phones)} phones + {len(exclude_brands)} brands",
+            flush=True,
+        )
 
         res = run_pipeline(
             city=body.city.strip(),
@@ -243,6 +268,7 @@ def _run_search_job(job_id: str, user_id: str, body: SearchBody) -> None:
             description=(body.description or "").strip(),
             exclude_domains=exclude_domains,
             exclude_phones=exclude_phones,
+            exclude_brands=exclude_brands,
             only_without_website=body.only_without_website,
         )
         leads = res["leads"]
@@ -461,6 +487,57 @@ VALID_STATUSES = {
 }
 
 
+def _norm_phone_digits(phone: str) -> str:
+    """מנרמל טלפון ישראלי ל-972XXXXXXXXX לצורך השוואה."""
+    d = re.sub(r"\D", "", phone or "")
+    if d.startswith("00"):
+        d = d[2:]
+    if d.startswith("0") and len(d) >= 9:
+        d = "972" + d[1:]
+    return d
+
+
+def _suppress_lead(sb, *, user_id: str, lead: dict, scope: str, reason: str = "") -> int:
+    """
+    רושם ליד שנמחק ברשימת ההשתקה כדי שלא יחזור בחיפוש הבא.
+
+    scope="brand" משתיק את כל הרשת — מחיקת סניף ארומה אחד מסירה את כולם.
+    """
+    rows: list[dict] = []
+    base = {
+        "user_id": user_id,
+        "scope": scope,
+        "reason": reason or None,
+        "business_name": (lead.get("business_name") or "")[:200] or None,
+    }
+
+    site_key = (lead.get("site_key") or "").strip()
+    phone = _norm_phone_digits(lead.get("phone") or lead.get("whatsapp") or "")
+
+    if scope == "brand":
+        brand = wp.normalize_brand(lead.get("business_name") or "")
+        if brand:
+            rows.append({**base, "brand_key": brand})
+    if site_key:
+        rows.append({**base, "site_key": site_key})
+    if phone and len(phone) >= 9:
+        rows.append({**base, "phone_norm": phone})
+
+    if not rows:
+        return 0
+    try:
+        sb.table("suppressed_leads").upsert(
+            rows,
+            on_conflict="user_id,site_key,phone_norm,brand_key",
+            ignore_duplicates=True,
+        ).execute()
+    except Exception as e:
+        # טבלה חסרה בסכמה ישנה — לא מפילים את המחיקה בגלל זה
+        print(f"[SUPPRESS] failed: {e}", flush=True)
+        return 0
+    return len(rows)
+
+
 def _log_activity(
     sb,
     *,
@@ -575,16 +652,23 @@ def bulk_delete_no_website(user_id: str = Depends(verify_user)):
     return {"deleted": len(ids)}
 
 
-@app.delete("/api/leads/{lead_id}", status_code=204)
-def delete_lead(lead_id: str, user_id: str = Depends(verify_user)):
+@app.delete("/api/leads/{lead_id}")
+def delete_lead(
+    lead_id: str,
+    scope: str = Query("lead", pattern="^(lead|brand)$"),
+    reason: Optional[str] = None,
+    user_id: str = Depends(verify_user),
+):
     """
-    מחיקה מוחלטת של ליד. הליד נמחק לצמיתות מבסיס הנתונים.
-    משאיר את site_key בטבלת searched_domains כדי לא לחזור עליו בחיפוש הבא.
+    מוחק ליד ומוסיף אותו לרשימת ההשתקה — הוא לא יחזור בחיפוש הבא.
+
+    scope="brand" משתיק את כל הרשת לפי שם המותג. מחיקת סניף ארומה אחד
+    מסירה את כל סניפי ארומה, גם כאלה שעוד לא נמצאו.
     """
     sb = _sb()
     existing = (
         sb.table("leads")
-        .select("id,site_key")
+        .select("id,site_key,phone,whatsapp,business_name")
         .eq("id", lead_id)
         .eq("user_id", user_id)
         .limit(1)
@@ -593,6 +677,10 @@ def delete_lead(lead_id: str, user_id: str = Depends(verify_user)):
     rows = getattr(existing, "data", None) or []
     if not rows:
         raise HTTPException(404, "לא נמצא")
+
+    suppressed = _suppress_lead(
+        sb, user_id=user_id, lead=rows[0], scope=scope, reason=reason
+    )
 
     # מחיקה: גם פעילויות קשורות ייעלמו (אם יש cascade בסכמה).
     # אם אין cascade — מוחקים ידנית כדי לא להשאיר זבל.
@@ -603,6 +691,67 @@ def delete_lead(lead_id: str, user_id: str = Depends(verify_user)):
         pass
 
     sb.table("leads").delete().eq("id", lead_id).eq("user_id", user_id).execute()
+
+    also_removed = 0
+    if scope == "brand":
+        brand = wp.normalize_brand(rows[0].get("business_name") or "")
+        if brand:
+            # מסיר מיד גם סניפים אחרים של אותה רשת שכבר יושבים אצלה ברשימה
+            siblings = (
+                sb.table("leads")
+                .select("id,business_name")
+                .eq("user_id", user_id)
+                .execute()
+            )
+            ids = [
+                r["id"]
+                for r in (getattr(siblings, "data", None) or [])
+                if wp.normalize_brand(r.get("business_name") or "") == brand
+            ]
+            if ids:
+                try:
+                    sb.table("lead_activities").delete().in_("lead_id", ids).execute()
+                except Exception:
+                    pass
+                sb.table("leads").delete().in_("id", ids).eq("user_id", user_id).execute()
+                also_removed = len(ids)
+
+    return {
+        "deleted": 1 + also_removed,
+        "suppressed_rules": suppressed,
+        "scope": scope,
+    }
+
+
+# ----- רשימת השתקה (לידים שנמחקו ולא יחזרו) -----
+
+@app.get("/api/suppressions")
+def list_suppressions(user_id: str = Depends(verify_user)):
+    """מה חסום כרגע — כדי שאפשר יהיה לראות ולבטל."""
+    sb = _sb()
+    r = (
+        sb.table("suppressed_leads")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(500)
+        .execute()
+    )
+    return getattr(r, "data", None) or []
+
+
+@app.delete("/api/suppressions/{suppression_id}", status_code=204)
+def remove_suppression(suppression_id: str, user_id: str = Depends(verify_user)):
+    """
+    מבטל השתקה. העסק יוכל לחזור בחיפוש הבא.
+
+    נחוץ כי חסימת מותג היא התאמת תחילית — היא עלולה לתפוס עסק לא קשור,
+    וצריכה להיות הפיכה.
+    """
+    sb = _sb()
+    sb.table("suppressed_leads").delete().eq("id", suppression_id).eq(
+        "user_id", user_id
+    ).execute()
     return None
 
 

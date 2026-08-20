@@ -124,3 +124,37 @@ def test_normalize_brand_collapses_branches():
 def test_normalize_brand_handles_empty():
     assert normalize_brand("") == ""
     assert normalize_brand(None) == ""
+
+
+# --------------------------------------- השתקת מותג (מחקת ארומה = כל ארומה)
+from web_presence import brand_matches  # noqa: E402
+
+
+@pytest.mark.parametrize("name", [
+    "ארומה תל אביב - סניף דיזנגוף",
+    "ארומה אספרסו בר סניף נורדאו",
+    "ארומה אספרסו בר, רמת גן",
+    "ארומה",
+])
+def test_deleting_aroma_blocks_every_branch(name):
+    assert brand_matches(name, "ארומה")
+
+
+@pytest.mark.parametrize("name", [
+    "ארומטיקה בע\"מ",     # שם דומה, עסק אחר לגמרי
+    "קפה קפה",
+    "מספרת ארומי",
+])
+def test_unrelated_businesses_survive_brand_suppression(name):
+    assert not brand_matches(name, "ארומה")
+
+
+def test_short_brand_key_never_matches():
+    """מפתח קצר מדי כללי מכדי לחסום — היה מוחק חצי מהלידים."""
+    assert not brand_matches("קפה קפה", "קפ")
+    assert not brand_matches("כל עסק שהוא", "א")
+
+
+def test_brand_match_handles_empty():
+    assert not brand_matches("", "ארומה")
+    assert not brand_matches("ארומה", "")

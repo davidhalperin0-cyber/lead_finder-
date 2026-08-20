@@ -70,6 +70,7 @@ export default function LostPage() {
       <li key={id}>
         <LeadCard
           lead={L}
+          onDeleted={() => reload()}
           primaryAction={
             L.lost_can_return
               ? {

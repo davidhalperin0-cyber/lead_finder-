@@ -69,6 +69,7 @@ export default function NotInterestedPage() {
       <li key={id}>
         <LeadCard
           lead={L}
+          onDeleted={() => reload()}
           secondaryActions={[
             {
               label: "✏️ ערוך סיבה",

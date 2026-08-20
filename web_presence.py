@@ -132,20 +132,42 @@ def find_chain_domains(urls, *, min_branches: int = 6) -> set:
 
 def normalize_brand(name: str) -> str:
     """
-    מנרמל שם עסק לצורך זיהוי רשת לפי שם.
+    מנרמל שם עסק למפתח מותג.
 
-    "ארומה תל אביב — סניף דיזנגוף" ו-"ארומה סניף נורדאו" מתכווצים לאותו מפתח.
+    "ארומה תל אביב — סניף דיזנגוף" ו-"ארומה אספרסו בר, רמת גן" מתכווצים
+    למפתחות שמתחילים שניהם ב-"ארומה", כדי ש-`brand_matches` יזהה אותם
+    כאותה רשת.
     """
     import re
 
     s = (name or "").strip().lower()
-    # חותך הכל אחרי מפריד סניף נפוץ
-    s = re.split(r"\s*[-–|,]\s*|\s+סניף\s+", s)[0]
+    # קודם חותכים ב"סניף" — הוא הסימן החזק ביותר, וקודם לכל מפריד אחר
+    s = re.split(r"\s+סניף\b", s)[0]
+    s = re.split(r"\s*[-–—|,()]\s*", s)[0]
     noise = (
-        "סניף", "בעמ", "בע\"מ", "ltd", "inc", "בתל אביב", "תל אביב",
-        "ירושלים", "חיפה", "ישראל", "israel", "the", "אולם", "מרכז",
+        "בע\"מ", "בעמ", "ltd", "inc", "llc",
+        "תל אביב", "תל־אביב", "ירושלים", "חיפה", "רמת גן", "פתח תקווה",
+        "ראשון לציון", "באר שבע", "נתניה", "חולון", "בת ים", "הרצליה",
+        "ישראל", "israel",
     )
     for w in noise:
         s = s.replace(w, " ")
-    s = re.sub(r"[^\w֐-׿]+", " ", s)
+    s = re.sub(r"[^\w\u0590-\u05ff]+", " ", s)
     return re.sub(r"\s+", " ", s).strip()
+
+
+def brand_matches(candidate_name: str, suppressed_brand: str) -> bool:
+    """
+    האם שם עסק שייך למותג מושתק.
+
+    התאמה היא תחילית על גבול מילה, לא שוויון: מחיקת "ארומה" חוסמת גם
+    "ארומה אספרסו בר". מפתח קצר מ-3 תווים לא מתאים לאף אחד — הוא כללי
+    מדי ויחסום עסקים שאין להם קשר.
+    """
+    key = (suppressed_brand or "").strip()
+    cand = normalize_brand(candidate_name)
+    if len(key) < 3 or not cand:
+        return False
+    if cand == key:
+        return True
+    return cand.startswith(key + " ") or key.startswith(cand + " ")
