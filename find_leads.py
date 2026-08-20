@@ -28,6 +28,9 @@ from pathlib import Path
 from typing import Callable, Optional
 from urllib.parse import urljoin, urlparse
 
+import web_presence as wp
+import qualification as qual
+
 import requests
 from bs4 import BeautifulSoup
 
@@ -270,6 +273,12 @@ class Lead:
     html_size_kb: float = 0.0  # גודל ה-HTML
     no_website: bool = False   # עסק בלי אתר אינטרנט
     social_url: str = ""       # קישור לדף פייסבוק/אינסטגרם/גוגל (כשאין אתר)
+    # ----- אותות מ-Google Places (שילמנו עליהם — כדאי להשתמש בהם) -----
+    web_category: str = ""       # none / social_only / aggregator / own_site
+    google_rating: float = 0.0
+    google_review_count: int = 0
+    liveness: str = ""           # strong / ok / weak / unknown
+    call_priority_score: int = 0  # 0-100, סדר חיוג מומלץ
     # ----- תסריט שיחה אנושי -----
     script_intro: str = ""              # פתיחה — איך לפתוח את השיחה
     script_discovery: list = field(default_factory=list)  # 2-3 שאלות לגלות בעיות
@@ -508,7 +517,9 @@ def search_businesses_google_places(
         "places.id,places.displayName,places.formattedAddress,"
         "places.nationalPhoneNumber,places.internationalPhoneNumber,"
         "places.websiteUri,places.googleMapsUri,places.location,"
-        "places.businessStatus,places.types,places.rating,places.userRatingCount"
+        "places.businessStatus,places.types,places.rating,places.userRatingCount,"
+        # חובה ב-FieldMask, אחרת גוגל לא מחזיר אותו והדפדוף למטה מת
+        "nextPageToken"
     )
     headers = {
         "Content-Type": "application/json",
@@ -547,11 +558,23 @@ def search_businesses_google_places(
         all_places.extend(places)
         next_token = data.get("nextPageToken")
         pages += 1
-        if not next_token or len(all_places) >= limit * 2:
+        if not next_token:
             break
+        # במסלול "בלי אתר" רק ~15% מהתוצאות מוכשרות, אז מושכים את כל
+        # הדפים. במסלול "עם אתר" התשואה גבוהה ואין טעם לשלם על דף שלישי.
+        if not only_without_website and len(all_places) >= limit * 2:
+            break
+
+    # זיהוי רשתות: דומיין שחוזר אצל 6+ עסקים בתוצאות = רשת (בעיית ארומה).
+    chain_domains = wp.find_chain_domains(
+        (pl.get("websiteUri") or "") for pl in all_places
+    )
+    if chain_domains:
+        print(f"  Google Places: זוהו {len(chain_domains)} דומייני רשת — נחסמים", file=sys.stderr)
 
     out: list[dict] = []
     seen_keys: set[str] = set()
+    skipped = {"chain": 0, "wrong_segment": 0, "service_number": 0}
     for p in all_places:
         # סטטוס עסק - אם סגור לצמיתות, דלג
         if p.get("businessStatus") in ("CLOSED_PERMANENTLY", "CLOSED_TEMPORARILY"):
@@ -568,19 +591,37 @@ def search_businesses_google_places(
             continue
         if not _is_israeli_phone(phone):
             continue
-        # אתר
+        # מספר שירות ארצי (1-700, *6070) = מוקד או רשת, לא בעל עסק שירים טלפון
+        if qual.is_service_number(phone):
+            skipped["service_number"] += 1
+            continue
+        # אתר — סיווג לחמש קטגוריות במקום בדיקה בינארית.
+        # websiteUri מכיל דברים שונים לגמרי: אתר עצמאי, דף אינסטגרם, רישום
+        # ב-zap, או אתר של רשת. בדיקת "ריק/לא ריק" זרקה את הלידים הטובים
+        # ביותר (עסק שקיים רק באינסטגרם) והכניסה את הגרועים (סניף רשת).
         website = (p.get("websiteUri") or "").strip()
+        category = wp.classify(website, chain_domains=chain_domains)
 
+        # רשת נחסמת בשני המסלולים — אין למי למכור אתר בסניף.
+        if category == wp.CHAIN_CORPORATE:
+            skipped["chain"] += 1
+            continue
+
+        social_from_site = ""
         if only_without_website:
-            if website:
+            if not wp.is_no_website(category):
+                skipped["wrong_segment"] += 1
                 continue
+            # הקישור החברתי הוא נכס — עליו בונים את פניית ה-DM.
+            if category == wp.SOCIAL_ONLY:
+                social_from_site = website
+            website = ""
         else:
-            if not website:
+            if category != wp.OWN_SITE:
+                skipped["wrong_segment"] += 1
                 continue
             if not website.startswith(("http://", "https://")):
                 website = "https://" + website
-            if _is_blacklisted_domain(website):
-                continue
 
         # קישור ל-Google Maps של העסק - אמיתי לחלוטין
         google_maps_url = (p.get("googleMapsUri") or "").strip()
@@ -597,9 +638,10 @@ def search_businesses_google_places(
             "phone": phone,
             "email": "",  # Google Places לא מחזיר אימייל
             "address": (p.get("formattedAddress") or "").strip(),
-            "social": google_maps_url if only_without_website else "",
+            "social": (social_from_site or google_maps_url) if only_without_website else "",
             "source_url": google_maps_url,
             "no_website": only_without_website,
+            "web_category": category,
             "google_rating": p.get("rating"),
             "google_review_count": p.get("userRatingCount"),
         })
@@ -608,7 +650,10 @@ def search_businesses_google_places(
 
     tag = "without website" if only_without_website else "with website"
     print(
-        f"  Google Places returned {len(out)} verified businesses ({tag})",
+        f"  Google Places returned {len(out)} verified businesses ({tag}) — "
+        f"נבדקו {len(all_places)}, נחסמו {skipped['chain']} סניפי רשת, "
+        f"{skipped['service_number']} מספרי שירות, "
+        f"{skipped['wrong_segment']} לא בקהל היעד",
         file=sys.stderr,
     )
     return out
@@ -819,186 +864,9 @@ def _is_blacklisted_domain(url: str) -> bool:
     return False
 
 
-def search_businesses_ai(
-    city: str,
-    business_type: str,
-    description: str = "",
-    limit: int = 30,
-    exclude_domains: Optional[set[str]] = None,
-    *,
-    only_without_website: bool = False,
-) -> list[dict]:
-    """
-    חיפוש עסקים מקומיים בעזרת OpenAI (gpt-4o-mini-search-preview) עם גלישה באינטרנט.
-    זה מנוע החיפוש החזק ביותר - הוא מחפש בגוגל, נכנס לאתרים, ומחזיר תוצאות אמיתיות.
-    אם only_without_website=True - מחפש רק עסקים שאין להם אתר אינטרנט.
-    """
-    api_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
-    if not api_key:
-        print("  AI search: אין OPENAI_API_KEY, מדלג", file=sys.stderr)
-        return []
-    try:
-        from openai import OpenAI
-    except ImportError:
-        print("  AI search: חבילת openai לא מותקנת", file=sys.stderr)
-        return []
-
-    exclude_domains = exclude_domains or set()
-    excluded_text = ""
-    if exclude_domains:
-        sample = list(exclude_domains)[:30]
-        excluded_text = (
-            "\n\nאתרים שכבר חיפשנו בעבר ויש להתעלם מהם (אל תחזירי אותם שוב):\n"
-            + "\n".join(f"- {d}" for d in sample)
-        )
-
-    desc_text = ""
-    if description.strip():
-        desc_text = f"\n\nתיאור נוסף של מה שאני מחפשת:\n{description.strip()}"
-
-    blacklist_text = ", ".join(sorted(_DOMAIN_BLACKLIST))
-
-    if only_without_website:
-        user_prompt = f"""אני מחפשת לידים — עסקים מקומיים בישראל בלבד מסוג "{business_type}" בעיר "{city}" (ישראל) שאין להם אתר אינטרנט עצמאי.{desc_text}{excluded_text}
-
-חשוב מאוד — אסור להמציא נתונים:
-1. ‏**ישראל בלבד** — אסור עסקים מחו"ל. אם יש עיר עם שם דומה במדינה אחרת (Hatillo בפוארטו ריקו, Tel Aviv במקום אחר וכו') — אסור! רק ישראל.
-2. ‏**כל טלפון חייב להיות מאומת** — ראית אותו במקור אמיתי באינטרנט. אם לא ראית טלפון אמיתי — אל תכלילי את העסק.
-3. ‏**חובה לכלול שדה `source_url`** — הקישור שבו ראית את הטלפון (למשל דף הפייסבוק/אינסטגרם/Google Maps של העסק). זה חיוני לאימות.
-4. כל הטלפונים חייבים להיות ישראליים (קידומת 0XX או 972+). אסור +1, +44, או כל קידומת זרה.
-5. מצאי לפחות {limit} עסקים שאין להם אתר עצמאי משלהם — רק דף בגוגל, פייסבוק, אינסטגרם, או רישום באתרי תיירות/דירוגים.
-6. כתובת בעיר {city} ישראל בלבד.
-7. אסור לחזור על אותו עסק.
-8. דרכים למצוא: Google Maps של עסקים מקומיים בישראל, רשימות פייסבוק, אתרי דירוגים ישראליים (zap, restaurants.co.il, easy.co.il). תני עדיפות לעסקים קטנים-בינוניים.
-
-החזירי JSON תקני בלבד (ללא טקסט נוסף, ללא markdown), במבנה הזה:
-{{"businesses":[{{"name":"שם","phone":"05X-XXXXXXX","address":"רחוב, עיר","social":"facebook/instagram/google url אופציונלי","source_url":"https://www.facebook.com/business-page-where-you-saw-the-phone"}}, ...]}}
-
-אל תכלילי שדה website. ‏**אסור להמציא טלפונים**. אם אין לך מקור אמיתי שמופיע בו טלפון — אל תכלילי את העסק. עדיף 5 לידים אמיתיים מאשר 20 ממציאים."""
-    else:
-        user_prompt = f"""אני מחפשת לידים — עסקים מקומיים בישראל בלבד מסוג "{business_type}" בעיר "{city}" (ישראל) שיש להם אתר אינטרנט פעיל.{desc_text}{excluded_text}
-
-חשוב מאוד:
-1. ‏**ישראל בלבד** — אסור עסקים מחו"ל. אם יש עיר עם שם דומה במדינה אחרת (Hatillo בפוארטו ריקו, Tel Aviv במקום אחר וכו') — אסור! רק ישראל.
-2. עדיפות לאתרים בעברית או .co.il / .org.il. אם יש טלפון, חייב להיות ישראלי (0XX או 972+).
-3. מצאי לפחות {limit} עסקים שונים. תחפשי בגוגל, תכנסי לרשימות עסקים, תאתרי אתרים אמיתיים.
-4. כל עסק חייב URL של האתר העצמאי שלו (לא דף פייסבוק, לא דף ב-easy.co.il, לא ב-zap, לא ב-restaurants.co.il).
-5. אסור לחזור על אותו עסק (לפי דומיין).
-6. עדיפות לעסקים שאתרם נראה ישן/לא מקצועי — הם הלידים הכי שווים.
-7. כל עסק חייב להיות באמת בעיר {city} ישראל, לא בעיר אחרת.
-
-החזירי JSON תקני בלבד (ללא טקסט נוסף, ללא markdown), במבנה הזה:
-{{"businesses":[{{"name":"שם","website":"https://...","phone":"","address":""}}, ...]}}
-
-אם את לא בטוחה לגבי טלפון או כתובת — השאירי מחרוזת ריקה. אל תמציאי. דומיינים אסורים: {blacklist_text}."""
-
-    try:
-        client = OpenAI(api_key=api_key)
-        # gpt-4o-mini-search-preview יודע לגלוש באינטרנט - הכלי הזה נועד בדיוק לשימוש כזה
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini-search-preview",
-            web_search_options={"search_context_size": "medium"},
-            messages=[
-                {"role": "system", "content": "את עוזרת חיפוש לידים מקומיים בישראל. את מחפשת באינטרנט, נכנסת לתוצאות, ומחזירה JSON תקני בלבד. לעולם אל תכתבי טקסט מחוץ ל-JSON."},
-                {"role": "user", "content": user_prompt},
-            ],
-        )
-        content = completion.choices[0].message.content or ""
-    except Exception as e:
-        print(f"  AI search failed: {e}", file=sys.stderr)
-        return []
-
-    # מחלצת את ה-JSON מהתשובה (גם אם יש טקסט מסביב או markdown fences)
-    import json as _json
-    json_text = content
-    # מנקה ```json ... ``` fences אם יש
-    fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", json_text)
-    if fence:
-        json_text = fence.group(1)
-    # מחפש את הבלוק הראשון שמתחיל ב-{
-    brace = re.search(r"\{[\s\S]*\}", json_text)
-    if brace:
-        json_text = brace.group(0)
-
-    try:
-        data = _json.loads(json_text)
-    except Exception as e:
-        print(f"  AI returned non-JSON: {e}; preview={content[:200]!r}", file=sys.stderr)
-        return []
-
-    raw = data.get("businesses") or data.get("results") or []
-    seen_keys: set[str] = set()
-    out: list[dict] = []
-    for b in raw:
-        if not isinstance(b, dict):
-            continue
-        if only_without_website:
-            phone = (b.get("phone") or "").strip()
-            name = (b.get("name") or "").strip()
-            social = (b.get("social") or "").strip()
-            source_url = (b.get("source_url") or "").strip()
-            if not phone or not name:
-                continue
-            # סינון: חובה טלפון ישראלי. עסקים מחו"ל נחתכים כאן.
-            if not _is_israeli_phone(phone):
-                print(f"  AI search: דילוג על '{name}' — טלפון לא ישראלי: {phone}", file=sys.stderr)
-                continue
-            # סינון: חובה שיהיה מקור אמין לטלפון (קישור URL).
-            # זה הכלי העיקרי שלנו נגד AI שממציא מספרים.
-            verifiable_url = source_url or social
-            if not verifiable_url or not verifiable_url.startswith(("http://", "https://")):
-                print(
-                    f"  AI search: דילוג על '{name}' — אין מקור URL לאימות הטלפון",
-                    file=sys.stderr,
-                )
-                continue
-            # de-dup לפי שם+טלפון (אין לנו דומיין)
-            phone_digits_dd = re.sub(r"\D", "", phone)
-            key = f"{name.lower()}|{phone_digits_dd}"
-            if key in seen_keys:
-                continue
-            seen_keys.add(key)
-            out.append({
-                "name": name,
-                "website": "",
-                "phone": phone,
-                "email": (b.get("email") or "").strip(),
-                "address": (b.get("address") or "").strip(),
-                "social": social or source_url,
-                "source_url": source_url or social,
-                "no_website": True,
-            })
-            if len(out) >= limit:
-                break
-        else:
-            site = (b.get("website") or b.get("url") or "").strip()
-            if not site:
-                continue
-            if not site.startswith(("http://", "https://")):
-                site = "https://" + site
-            if _is_blacklisted_domain(site):
-                continue
-            d = _domain_of(site)
-            if d in exclude_domains or d in seen_keys:
-                continue
-            # אם יש טלפון - חובה שיהיה ישראלי. אם הוא ריק - נסבול את זה.
-            phone = (b.get("phone") or "").strip()
-            if phone and not _is_israeli_phone(phone):
-                print(f"  AI search: דילוג על '{site}' — טלפון לא ישראלי: {phone}", file=sys.stderr)
-                continue
-            seen_keys.add(d)
-            out.append({
-                "name": (b.get("name") or "").strip() or d,
-                "website": site,
-                "phone": phone,
-                "email": (b.get("email") or "").strip(),
-                "address": (b.get("address") or "").strip(),
-            })
-            if len(out) >= limit:
-                break
-    tag = "no-website" if only_without_website else "with-website"
-    print(f"  AI search returned {len(out)} unique businesses ({tag})", file=sys.stderr)
-    return out
+# ‏search_businesses_ai הוסרה: היא ביקשה מ-LLM להמציא שמות עסקים
+# וטלפונים, ושדה ה-source_url שנדרש בפרומפט מעולם לא נפתח לאימות.
+# מקור לידים חייב להיות מאומת מכונה — ראה web_presence.py.
 
 
 def find_businesses(
@@ -1157,17 +1025,11 @@ def find_businesses(
             if len(combined) >= limit:
                 return combined[:limit]
 
-        print("  [2] AI (gpt-4o-mini-search-preview)...")
-        ai_results = search_businesses_ai(
-            city, business_type, description, limit,
-            exclude_domains | seen_keys,
-            only_without_website=False,
-        )
-        _add_results(ai_results, "AI")
-        if len(combined) >= limit:
-            return combined[:limit]
-
-        print("  [3] OpenStreetMap Overpass...")
+        # ה-AI הוסר כמקור גילוי. הוא היה מבקש מ-LLM להמציא רשימת עסקים
+        # וטלפונים; שדה `source_url` נדרש בפרומפט אך אף פעם לא נפתח לאימות,
+        # אז ההמצאות עברו. מאז שגוגל מדפדף ל-60 תוצאות אין בו גם צורך.
+        # ה-AI נשאר בשימוש רק לכתיבת טקסט מכירה על ליד שכבר אומת.
+        print("  [2] OpenStreetMap Overpass...")
         osm_results = search_businesses_overpass(
             city, business_type, limit,
             only_without_website=False,
@@ -1176,7 +1038,7 @@ def find_businesses(
         if len(combined) >= limit:
             return combined[:limit]
 
-        print("  [4] DuckDuckGo...")
+        print("  [3] DuckDuckGo...")
         ddg_results = search_businesses_ddg(city, business_type, limit)
         _add_results(ddg_results, "DDG")
 
@@ -1832,6 +1694,11 @@ def lead_to_supabase_payload(lead: Lead, *, user_id: str, job_id: str) -> dict:
     phone_norm = _normalize_il_phone(lead.phone or "")
     wa_norm = re.sub(r"\D", "", (lead.whatsapp or ""))
     return {
+        "web_category": lead.web_category or None,
+        "google_rating": lead.google_rating or None,
+        "google_review_count": lead.google_review_count or None,
+        "liveness": lead.liveness or None,
+        "call_priority_score": lead.call_priority_score or None,
         "user_id": user_id,
         "search_job_id": job_id,
         "business_name": lead.business_name or None,
@@ -2644,6 +2511,25 @@ def process_lead(
         phone=biz.get("phone", ""),
         email=biz.get("email", ""),
         address=biz.get("address", ""),
+    )
+    # אותות איכות מ-Google Places — נשלפו כבר, עד היום נזרקו.
+    try:
+        lead.google_rating = float(biz.get("google_rating") or 0)
+    except (TypeError, ValueError):
+        lead.google_rating = 0.0
+    try:
+        lead.google_review_count = int(biz.get("google_review_count") or 0)
+    except (TypeError, ValueError):
+        lead.google_review_count = 0
+    social = (biz.get("social") or biz.get("source_url") or "").strip()
+    # הסיווג חושב כבר במקור החיפוש. לא לגזור אותו מחדש מ-`social`, שמכיל
+    # קישור Google Maps כגיבוי — עסק בלי אתר בכלל היה מסווג בטעות כאגרגטור.
+    lead.web_category = biz.get("web_category") or wp.classify(biz.get("website") or "")
+    lead.liveness = qual.business_liveness(lead.google_review_count, lead.google_rating)
+    lead.call_priority_score = qual.call_priority(
+        liveness=lead.liveness,
+        has_social=wp.classify(social) == wp.SOCIAL_ONLY,
+        web_category=lead.web_category,
     )
     # מצב "עסק בלי אתר" — מסלול מיוחד
     if biz.get("no_website") or not lead.website:
