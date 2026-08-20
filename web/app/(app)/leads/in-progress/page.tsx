@@ -59,6 +59,7 @@ export default function InProgressPage() {
             <li key={id}>
               <LeadCard
                 lead={L as LeadCardData}
+                onDeleted={() => reload()}
                 secondaryActions={[
                   {
                     label: "📞 לא ענה",

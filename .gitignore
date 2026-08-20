@@ -12,3 +12,9 @@ __pycache__/
 .lead_screenshots/
 lead_screenshots/
 *.tsbuildinfo
+
+# גיבויי env — לעולם לא בגיט
+*.env.bak*
+.env.bak*
+api/.env.*
+!api/.env.example

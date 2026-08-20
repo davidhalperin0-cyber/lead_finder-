@@ -11,7 +11,7 @@ type LeadWon = LeadCardData & {
 };
 
 export default function WonPage() {
-  const { leads, loading } = useLeadsByStatus("won");
+  const { leads, loading, reload } = useLeadsByStatus("won");
 
   const totals = useMemo(() => {
     let total = 0;
@@ -62,7 +62,7 @@ export default function WonPage() {
           const dt = (L.deal_closed_at || "").slice(0, 10);
           return (
             <li key={id}>
-              <LeadCard lead={L} />
+              <LeadCard lead={L} onDeleted={() => reload()} />
               <div className="mt-1 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
                 <div className="flex items-center justify-between">
                   <span className="font-bold">₪{amount.toLocaleString()}</span>

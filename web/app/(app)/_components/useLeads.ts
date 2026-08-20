@@ -81,14 +81,30 @@ export async function logActivity(
   });
 }
 
+export type DeleteScope = "lead" | "brand";
+
+export type DeleteResult = {
+  deleted: number;
+  suppressed_rules: number;
+  scope: DeleteScope;
+};
+
 /**
- * מוחק ליד לצמיתות מבסיס הנתונים. אי אפשר לשחזר.
+ * מוחק ליד ומוסיף אותו לרשימת ההשתקה — הוא לא יחזור בחיפוש הבא.
+ *
+ * scope="brand" מוחק את כל הרשת לפי שם המותג. מחיקת סניף ארומה אחד
+ * מסירה את כל סניפי ארומה, כולל כאלה שעוד לא נמצאו.
  */
-export async function deleteLead(id: string): Promise<void> {
+export async function deleteLead(
+  id: string,
+  scope: DeleteScope = "lead"
+): Promise<DeleteResult> {
   const supabase = createClient();
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error("אין סשן");
-  await apiFetch(`/api/leads/${id}`, session.access_token, {
-    method: "DELETE",
-  });
+  return await apiFetch<DeleteResult>(
+    `/api/leads/${id}?scope=${scope}`,
+    session.access_token,
+    { method: "DELETE" }
+  );
 }

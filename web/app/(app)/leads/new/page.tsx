@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import LeadCard, { LeadCardData } from "../../_components/LeadCard";
-import { useLeadsByStatus, quickStatus, deleteLead } from "../../_components/useLeads";
+import { useLeadsByStatus, quickStatus } from "../../_components/useLeads";
 import { useMemo, useState } from "react";
 
 type WebsiteFilter = "all" | "with_website" | "no_website";
@@ -95,25 +95,6 @@ export default function NewLeadsPage() {
     }
   }
 
-  async function removeLead(id: string, name: string) {
-    if (busy) return;
-    const ok = window.confirm(
-      `למחוק את "${name}" לצמיתות מהמערכת? אי אפשר לשחזר.`
-    );
-    if (!ok) return;
-    setBusy(id);
-    try {
-      await deleteLead(id);
-      setToast("נמחק ✓");
-      setTimeout(() => setToast(null), 2000);
-      await reload();
-    } catch (e: unknown) {
-      setToast(e instanceof Error ? e.message : "שגיאה במחיקה");
-      setTimeout(() => setToast(null), 3000);
-    } finally {
-      setBusy(null);
-    }
-  }
 
   function clearFilters() {
     setSearch("");
@@ -251,18 +232,12 @@ export default function NewLeadsPage() {
             <li key={String(L.id)}>
               <LeadCard
                 lead={L as LeadCardData}
+                onDeleted={() => reload()}
                 primaryAction={{
                   label: busy === L.id ? "..." : "התחל טיפול",
                   onClick: () => startWork(String(L.id)),
                   tone: "brand",
                 }}
-                secondaryActions={[
-                  {
-                    label: busy === L.id ? "..." : "🗑️ מחק לא רלוונטי",
-                    onClick: () => removeLead(String(L.id), String(L.business_name || "ליד")),
-                    tone: "rose",
-                  },
-                ]}
               />
             </li>
           ))}
@@ -281,18 +256,12 @@ export default function NewLeadsPage() {
                   <li key={String(L.id)}>
                     <LeadCard
                       lead={L as LeadCardData}
+                onDeleted={() => reload()}
                       primaryAction={{
                         label: busy === L.id ? "..." : "התחל טיפול",
                         onClick: () => startWork(String(L.id)),
                         tone: "brand",
                       }}
-                      secondaryActions={[
-                        {
-                          label: busy === L.id ? "..." : "🗑️ מחק לא רלוונטי",
-                          onClick: () => removeLead(String(L.id), String(L.business_name || "ליד")),
-                          tone: "rose",
-                        },
-                      ]}
                     />
                   </li>
                 ))}

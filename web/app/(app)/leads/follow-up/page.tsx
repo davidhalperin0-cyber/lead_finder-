@@ -76,6 +76,7 @@ export default function FollowUpPage() {
                 )}
                 <LeadCard
                   lead={L}
+                  onDeleted={() => reload()}
                   primaryAction={{
                     label: busy === id ? "..." : "✅ דיברתי",
                     tone: "brand",
