@@ -495,8 +495,9 @@ def make_call_brief(lead_id: str, force: bool = Query(False), user_id: str = Dep
     if not rows:
         raise HTTPException(404, "לא נמצא")
     lead = rows[0]
-    if lead.get("call_brief") and not force:
-        return lead["call_brief"]
+    cached = lead.get("call_brief")
+    if cached and cached.get("v") == cb.BRIEF_VERSION and not force:
+        return cached
 
     cap = int(os.environ.get("CALL_BRIEF_MONTHLY_CAP", "800"))
     try:

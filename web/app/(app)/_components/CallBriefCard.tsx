@@ -22,8 +22,12 @@ export type CallBrief = {
   objections: { they_say: string; you_say: string }[];
   watch_out: string[];
   warnings?: string[];
+  v?: number;
   facts_used?: { reviews: number; has_hours: boolean; google_matched: boolean };
 };
+
+// חייב להתאים ל-BRIEF_VERSION ב-call_brief.py. כרטיס ישן נבנה מחדש.
+const BRIEF_VERSION = 2;
 
 // הכנה שכבר בדרך (הכנה מראש במסך החיוג + פתיחת הליד) — לא משלמים עליה פעמיים
 const inflight = new Map<string, Promise<CallBrief>>();
@@ -61,20 +65,17 @@ function errorText(e: unknown): string {
   return raw || "שגיאה";
 }
 
-const STAGES: { key: "opener" | "reason" | "small_ask" | "meeting_ask"; title: string; hint: string }[] = [
-  { key: "opener", title: "1. פתיחה", hint: "מתחילים מהם, לא מאיתנו. מבקשים 30 שניות." },
-  { key: "reason", title: "2. למה התקשרתי", hint: "מספרים על הבעיה שלהם, לא על המוצר שלנו." },
-  { key: "small_ask", title: "4. בקשה קטנה", hint: "קודם 'שווה לכם לראות?', ורק אחר כך פגישה." },
-  { key: "meeting_ask", title: "5. קביעת שיחה עם דוד", hint: "שתי אפשרויות זמן. לא שאלת כן או לא." },
-];
-
-function Stage({ title, hint, text }: { title: string; hint: string; text: string }) {
+function Line({ n, title, text }: { n: number; title: string; text: string }) {
   if (!text) return null;
   return (
-    <div>
-      <p className="text-xs font-bold text-emerald-800">{title}</p>
-      <p className="mb-1 text-[11px] text-slate-500">{hint}</p>
-      <p className="rounded-lg bg-white p-3 text-[15px] leading-relaxed text-slate-900">{text}</p>
+    <div className="flex gap-3">
+      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">
+        {n}
+      </span>
+      <div>
+        <p className="text-[11px] font-bold text-emerald-800">{title}</p>
+        <p className="text-base leading-snug text-slate-900">{text}</p>
+      </div>
     </div>
   );
 }
@@ -86,8 +87,9 @@ export default function CallBriefCard({
   leadId: string;
   initial?: CallBrief | null;
 }) {
-  const [brief, setBrief] = useState<CallBrief | null>(initial || null);
-  const [loading, setLoading] = useState(!initial);
+  const ready = initial && initial.v === BRIEF_VERSION ? initial : null;
+  const [brief, setBrief] = useState<CallBrief | null>(ready);
+  const [loading, setLoading] = useState(!ready);
   const [err, setErr] = useState<string | null>(null);
 
   async function load(force = false) {
@@ -103,8 +105,8 @@ export default function CallBriefCard({
   }
 
   useEffect(() => {
-    if (initial) {
-      setBrief(initial);
+    if (ready) {
+      setBrief(ready);
       setLoading(false);
       return;
     }
@@ -140,120 +142,49 @@ export default function CallBriefCard({
   const b = brief;
   return (
     <div>
-      {/* הכנה — לקרוא לפני שמחייגים */}
-      <div className="space-y-3 border-b border-amber-100 bg-amber-50 p-4">
-        <p className="text-xs font-bold text-amber-800">🧭 לפני שמחייגים — 30 שניות</p>
-        {b.snapshot && <p className="text-sm leading-relaxed text-slate-900">{b.snapshot}</p>}
-
+      {/* מי הם — שלוש שורות */}
+      <div className="space-y-1.5 border-b border-amber-100 bg-amber-50 px-4 py-3">
+        {b.snapshot && <p className="text-sm text-slate-800">{b.snapshot}</p>}
+        {b.angle && <p className="text-sm font-bold text-slate-900">💡 {b.angle}</p>}
+        <p className="text-xs text-slate-600">
+          <span className="font-semibold text-slate-800">{b.product_label}</span>
+          {" "}(מ-{b.from_price.toLocaleString("he-IL")} ₪)
+          {b.best_time && <> · ⏰ {b.best_time}</>}
+        </p>
         {b.customers_love.length > 0 && (
-          <div>
-            <p className="text-xs font-bold text-amber-800">מה הלקוחות שלהם אוהבים</p>
-            <ul className="mt-1 space-y-1">
-              {b.customers_love.map((c, i) => (
-                <li key={i} className="text-sm text-slate-800">
-                  {c.point} <span className="text-slate-500">— &ldquo;{c.quote}&rdquo;</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {b.angle && (
-          <div className="rounded-lg bg-white p-3">
-            <p className="text-xs font-bold text-amber-800">💡 הזווית</p>
-            <p className="text-sm font-medium text-slate-900">{b.angle}</p>
-          </div>
-        )}
-
-        <div className="grid gap-2 sm:grid-cols-2">
-          <div className="rounded-lg bg-white p-3">
-            <p className="text-xs font-bold text-amber-800">מה להציע</p>
-            <p className="text-sm font-semibold text-slate-900">
-              {b.product_label}{" "}
-              <span className="font-normal text-slate-500">
-                (החל מ-{b.from_price.toLocaleString("he-IL")} ₪)
-              </span>
-            </p>
-            {b.product_why && <p className="mt-0.5 text-xs text-slate-600">{b.product_why}</p>}
-          </div>
-          {b.best_time && (
-            <div className="rounded-lg bg-white p-3">
-              <p className="text-xs font-bold text-amber-800">⏰ מתי להתקשר</p>
-              <p className="text-sm text-slate-800">{b.best_time}</p>
-            </div>
-          )}
-        </div>
-
-        {b.before_dial.length > 0 && (
-          <ul className="space-y-1">
-            {b.before_dial.map((s, i) => (
-              <li key={i} className="flex gap-2 text-sm text-slate-800">
-                <span className="text-amber-600">☐</span>
-                {s}
-              </li>
-            ))}
-          </ul>
+          <p className="text-xs text-slate-600">
+            ❤️ {b.customers_love.map((c) => `"${c.quote}"`).join(" · ")}
+          </p>
         )}
       </div>
 
-      {/* התסריט — לפי סדר השיחה */}
-      <div className="space-y-3 bg-emerald-50/60 p-4">
-        <p className="text-xs font-bold text-emerald-800">🎤 התסריט — לא לקרוא מילה במילה, להגיד במילים שלך</p>
-        <Stage {...STAGES[0]} text={b.opener} />
-        <Stage {...STAGES[1]} text={b.reason} />
-        {b.questions.length > 0 && (
-          <div>
-            <p className="text-xs font-bold text-emerald-800">3. שאלות</p>
-            <p className="mb-1 text-[11px] text-slate-500">שואלים, ואז שותקים ונותנים להם לדבר.</p>
-            <ul className="space-y-1.5">
-              {b.questions.map((q, i) => (
-                <li key={i} className="rounded-lg bg-white p-3 text-[15px] text-slate-900">
-                  {q}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        <Stage {...STAGES[2]} text={b.small_ask} />
-        <Stage {...STAGES[3]} text={b.meeting_ask} />
+      {/* התסריט */}
+      <div className="space-y-3 p-4">
+        <Line n={1} title="פתיחה" text={b.opener} />
+        <Line n={2} title="למה התקשרתי" text={b.reason} />
+        <Line n={3} title="לשאול ולשתוק" text={b.questions.join(" / ")} />
+        <Line n={4} title="בקשה קטנה" text={b.small_ask} />
+        <Line n={5} title="שיחה עם דוד" text={b.meeting_ask} />
 
         {b.objections.length > 0 && (
-          <div>
-            <p className="text-xs font-bold text-amber-700">⚠️ אם אומרים לך…</p>
-            <p className="mb-1 text-[11px] text-slate-500">מסכימה, שואלת, מציעה הצצה. לא מתווכחת.</p>
-            <div className="space-y-1.5">
-              {b.objections.map((o, i) => (
-                <details key={i} className="rounded-lg border border-amber-200 bg-white">
-                  <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-amber-900">
-                    &ldquo;{o.they_say}&rdquo;
-                  </summary>
-                  <p className="px-3 pb-3 text-sm text-slate-800">{o.you_say}</p>
-                </details>
-              ))}
-            </div>
+          <div className="space-y-1 pt-1">
+            {b.objections.map((o, i) => (
+              <details key={i} className="rounded-lg border border-amber-200 bg-white">
+                <summary className="cursor-pointer px-3 py-1.5 text-sm font-semibold text-amber-900">
+                  אם אומרים: &ldquo;{o.they_say}&rdquo;
+                </summary>
+                <p className="px-3 pb-2 text-sm text-slate-800">{o.you_say}</p>
+              </details>
+            ))}
           </div>
         )}
 
-        {b.watch_out.length > 0 && (
-          <div className="rounded-lg border border-slate-200 bg-white p-3">
-            <p className="text-xs font-bold text-slate-700">שימי לב בשיחה הזאת</p>
-            <ul className="mt-1 list-disc space-y-0.5 pr-4 text-sm text-slate-800">
-              {b.watch_out.map((w, i) => (
-                <li key={i}>{w}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
+        {b.watch_out.length > 0 && <p className="text-xs text-slate-600">⚠️ {b.watch_out[0]}</p>}
         {(b.warnings || []).length > 0 && (
           <p className="text-xs text-rose-700">{(b.warnings || []).join(" · ")}</p>
         )}
 
-        <button
-          type="button"
-          onClick={() => load(true)}
-          className="text-xs text-slate-500 underline"
-        >
+        <button type="button" onClick={() => load(true)} className="text-xs text-slate-400 underline">
           להכין מחדש
         </button>
       </div>
