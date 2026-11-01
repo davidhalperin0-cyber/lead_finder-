@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { quickStatus, patchLead, logActivity } from "../_components/useLeads";
 import { TrustBadgeSmall } from "../_components/TrustBadge";
+import CallBriefCard, { fetchCallBrief, type CallBrief } from "../_components/CallBriefCard";
 
 type Lead = Record<string, unknown> & { id: string };
 
@@ -83,7 +84,6 @@ export default function CallModePage() {
   const [stats, setStats] = useState({ done: 0, interested: 0, no_answer: 0 });
   const [postpone, setPostpone] = useState(false);
   const [postponeDate, setPostponeDate] = useState("");
-  const [showScript, setShowScript] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -113,8 +113,18 @@ export default function CallModePage() {
   const phone = String(current?.phone || "");
   const tel = telHref(phone);
 
+  // מכינים מראש את שני הלידים הבאים — הכנה לוקחת כדקה, שיחה לוקחת יותר,
+  // אז כשהיא מגיעה אליהם התסריט כבר מחכה מוכן
+  const upNext = queue.slice(idx + 1, idx + 3);
+  const upNextKey = upNext.map((L) => L.id).join(",");
+  useEffect(() => {
+    upNext.forEach((L) => {
+      if (!L.call_brief) fetchCallBrief(String(L.id)).catch(() => {});
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upNextKey]);
+
   function nextLead() {
-    setShowScript(false);
     setPostpone(false);
     setPostponeDate("");
     if (idx + 1 >= queue.length) {
@@ -237,15 +247,6 @@ export default function CallModePage() {
     );
   }
 
-  // מסך החיוג הראשי
-  const opening = String(current?.opening_line || current?.best_talking_point || "").trim();
-  const scriptIntro = String(current?.script_intro || "").trim();
-  const discovery = (current?.script_discovery as string[]) || [];
-  const valuePitch = String(current?.script_value_pitch || "").trim();
-  const offer = String(current?.script_offer || "").trim();
-  const close = String(current?.script_close || "").trim();
-  const objections = (current?.script_objections as Record<string, string>) || {};
-  const hasFullScript = Boolean(scriptIntro || discovery.length || valuePitch);
 
   return (
     <div className="space-y-3 pb-6 animate-fadeIn">
@@ -313,94 +314,12 @@ export default function CallModePage() {
           })()}
         </div>
 
-        {/* הזווית לשיחה */}
-        {String(current.strongest_problem || "") && (
-          <div className="bg-amber-50 border-b border-amber-100 p-4">
-            <p className="text-xs font-bold text-amber-800 mb-1">💡 הזווית</p>
-            <p className="text-sm text-amber-900 leading-relaxed">
-              {String(current.strongest_problem)}
-            </p>
-          </div>
-        )}
-
-        {/* משפט פתיחה גדול */}
-        {opening && (
-          <div className="p-4 border-b border-slate-100">
-            <p className="text-xs font-bold text-slate-500 mb-1">🎤 איך לפתוח</p>
-            <p className="text-base font-medium text-slate-800 leading-relaxed">
-              &ldquo;{opening}&rdquo;
-            </p>
-          </div>
-        )}
-
-        {/* קישור לתסריט המלא */}
-        {hasFullScript && (
-          <button
-            onClick={() => setShowScript(!showScript)}
-            className="w-full bg-emerald-50 hover:bg-emerald-100 transition px-4 py-3 text-right text-sm font-bold text-emerald-700"
-          >
-            {showScript ? "↑ סגירת התסריט" : "📖 פתיחת התסריט המלא ↓"}
-          </button>
-        )}
-
-        {/* תסריט מורחב */}
-        {showScript && hasFullScript && (
-          <div className="bg-emerald-50/50 p-4 space-y-3 animate-slideUp">
-            {scriptIntro && (
-              <div>
-                <p className="text-xs font-bold text-emerald-700 mb-1">1. פתיחה</p>
-                <p className="text-sm text-slate-800 bg-white rounded-lg p-3">{scriptIntro}</p>
-              </div>
-            )}
-            {discovery.length > 0 && (
-              <div>
-                <p className="text-xs font-bold text-emerald-700 mb-1">2. שאלות</p>
-                <ul className="space-y-1.5">
-                  {discovery.map((q, i) => (
-                    <li key={i} className="text-sm text-slate-800 bg-white rounded-lg p-3">
-                      <span className="font-bold ml-1">{i + 1}.</span> {q}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {valuePitch && (
-              <div>
-                <p className="text-xs font-bold text-emerald-700 mb-1">3. הצגת ערך</p>
-                <p className="text-sm text-slate-800 bg-white rounded-lg p-3">{valuePitch}</p>
-              </div>
-            )}
-            {offer && (
-              <div>
-                <p className="text-xs font-bold text-emerald-700 mb-1">4. הצעה</p>
-                <p className="text-sm text-slate-800 bg-white rounded-lg p-3">{offer}</p>
-              </div>
-            )}
-            {close && (
-              <div>
-                <p className="text-xs font-bold text-emerald-700 mb-1">5. סגירה</p>
-                <p className="text-sm font-semibold text-slate-800 bg-white rounded-lg p-3">
-                  {close}
-                </p>
-              </div>
-            )}
-            {Object.keys(objections).length > 0 && (
-              <div>
-                <p className="text-xs font-bold text-amber-700 mb-1">⚠️ תשובות להתנגדויות</p>
-                <div className="space-y-1.5">
-                  {Object.entries(objections).map(([q, a], i) => (
-                    <details key={i} className="bg-white rounded-lg border border-amber-200">
-                      <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-amber-900">
-                        &ldquo;{q}&rdquo;
-                      </summary>
-                      <p className="px-3 pb-3 text-sm text-slate-700">{a}</p>
-                    </details>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        {/* הכנה + תסריט מותאם לעסק הזה */}
+        <CallBriefCard
+          key={String(current.id)}
+          leadId={String(current.id)}
+          initial={(current.call_brief as CallBrief | null) || null}
+        />
 
         {/* כפתור חיוג ענק */}
         {tel && (
