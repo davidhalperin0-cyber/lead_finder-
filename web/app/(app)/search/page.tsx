@@ -269,5 +269,6 @@ export default function SearchPage() {
       <Link href="/dashboard" className="block text-center text-sm text-brand underline">
         חזרה ללידים
       </Link>
+    </div>
   );
 }

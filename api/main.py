@@ -466,6 +466,65 @@ def get_lead(lead_id: str, user_id: str = Depends(verify_user)):
     return rows[0]
 
 
+def _briefs_this_month(sb: Client) -> int:
+    from datetime import datetime, timezone
+
+    month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    r = (
+        sb.table("leads")
+        .select("id", count="exact")
+        .gte("call_brief_at", month_start.isoformat())
+        .limit(1)
+        .execute()
+    )
+    return int(getattr(r, "count", 0) or 0)
+
+
+@app.post("/api/leads/{lead_id}/call-brief")
+def make_call_brief(lead_id: str, force: bool = Query(False), user_id: str = Depends(verify_user)):
+    """
+    כרטיס הכנה לשיחה. נבנה פעם אחת לליד ונשמר; force=true בונה מחדש.
+    תקרה חודשית (CALL_BRIEF_MONTHLY_CAP) כדי שעלויות Google/OpenAI לא יברחו.
+    """
+    import call_brief as cb
+    from datetime import datetime, timezone
+
+    sb = _sb()
+    r = sb.table("leads").select("*").eq("id", lead_id).eq("user_id", user_id).limit(1).execute()
+    rows = getattr(r, "data", None) or []
+    if not rows:
+        raise HTTPException(404, "לא נמצא")
+    lead = rows[0]
+    if lead.get("call_brief") and not force:
+        return lead["call_brief"]
+
+    cap = int(os.environ.get("CALL_BRIEF_MONTHLY_CAP", "800"))
+    try:
+        used = _briefs_this_month(sb)
+    except Exception:
+        used = 0  # העמודה עוד לא קיימת — המיגרציה לא הורצה
+    if used >= cap:
+        raise HTTPException(429, f"הגעת לתקרת ההכנות החודשית ({cap}). דברי עם דוד.")
+
+    try:
+        brief = cb.generate_brief(lead)
+    except Exception as e:
+        raise HTTPException(502, f"ההכנה נכשלה: {e}")
+
+    upd = cb.brief_to_legacy_fields(brief)
+    upd["call_brief"] = brief
+    upd["call_brief_at"] = datetime.now(timezone.utc).isoformat()
+    try:
+        sb.table("leads").update(upd).eq("id", lead_id).eq("user_id", user_id).execute()
+    except Exception as e:
+        # בלי המיגרציה: שומרים לפחות את עמודות התסריט הקיימות
+        print(f"call-brief: full save failed ({e}); saving legacy fields only", file=sys.stderr)
+        upd.pop("call_brief", None)
+        upd.pop("call_brief_at", None)
+        sb.table("leads").update(upd).eq("id", lead_id).eq("user_id", user_id).execute()
+    return brief
+
+
 class LeadPatch(BaseModel):
     status: Optional[str] = None
     notes: Optional[str] = None
