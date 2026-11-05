@@ -68,13 +68,13 @@ function errorText(e: unknown): string {
 function Line({ n, title, text }: { n: number; title: string; text: string }) {
   if (!text) return null;
   return (
-    <div className="flex gap-3">
-      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">
+    <div className="flex gap-4">
+      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-line text-xs tabular-nums text-slate-500">
         {n}
       </span>
-      <div>
-        <p className="text-[11px] font-bold text-emerald-800">{title}</p>
-        <p className="text-base leading-snug text-slate-900">{text}</p>
+      <div className="min-w-0">
+        <p className="text-xs text-slate-500">{title}</p>
+        <p className="mt-0.5 text-base leading-relaxed text-paper">{text}</p>
       </div>
     </div>
   );
@@ -117,22 +117,20 @@ export default function CallBriefCard({
 
   if (loading) {
     return (
-      <div className="border-b border-slate-100 bg-slate-50 p-5 text-center">
-        <p className="text-sm font-semibold text-slate-700">מכינה לך את השיחה…</p>
-        <p className="mt-1 text-xs text-slate-500">קוראת ביקורות ובונה תסריט לעסק הזה. עד דקה — בפעם הבאה זה כבר יחכה מוכן.</p>
+      <div className="space-y-3 p-5" aria-busy="true">
+        <p className="text-sm text-slate-700">מכינה לך את השיחה…</p>
+        <p className="text-xs text-slate-500">קוראת ביקורות ובונה תסריט לעסק הזה. עד דקה, ובפעם הבאה זה כבר יחכה מוכן.</p>
+        <span className="block h-3 w-3/4 animate-pulse rounded bg-slate-100" />
+        <span className="block h-3 w-1/2 animate-pulse rounded bg-slate-100" />
       </div>
     );
   }
   if (err || !brief) {
     return (
-      <div className="border-b border-rose-100 bg-rose-50 p-4">
-        <p className="text-sm font-semibold text-rose-900">לא הצלחתי להכין את השיחה</p>
-        <p className="mt-1 text-xs text-rose-800">{err}</p>
-        <button
-          type="button"
-          onClick={() => load()}
-          className="mt-2 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white"
-        >
+      <div className="p-5">
+        <p className="text-sm text-rose-700">לא הצלחתי להכין את השיחה</p>
+        <p className="mt-1 text-xs text-slate-500">{err}</p>
+        <button type="button" onClick={() => load()} className="mt-3 rounded-full border border-line px-4 py-2 text-xs text-slate-700 hover:text-paper">
           לנסות שוב
         </button>
       </div>
@@ -142,49 +140,52 @@ export default function CallBriefCard({
   const b = brief;
   return (
     <div>
-      {/* מי הם — שלוש שורות */}
-      <div className="space-y-1.5 border-b border-amber-100 bg-amber-50 px-4 py-3">
-        {b.snapshot && <p className="text-sm text-slate-800">{b.snapshot}</p>}
-        {b.angle && <p className="text-sm font-bold text-slate-900">💡 {b.angle}</p>}
-        <p className="text-xs text-slate-600">
-          <span className="font-semibold text-slate-800">{b.product_label}</span>
-          {" "}(מ-{b.from_price.toLocaleString("he-IL")} ₪)
-          {b.best_time && <> · ⏰ {b.best_time}</>}
-        </p>
+      {/* מי הם */}
+      <div className="space-y-2.5 border-b border-line p-5">
+        {b.angle && <p className="text-[17px] leading-snug text-paper">{b.angle}</p>}
+        {b.snapshot && <p className="text-sm leading-relaxed text-slate-600">{b.snapshot}</p>}
+        <div className="flex flex-wrap gap-2 pt-1">
+          <span className="chip">
+            {b.product_label} · מ-{b.from_price.toLocaleString("he-IL")} ₪
+          </span>
+          {b.best_time && <span className="chip">{b.best_time}</span>}
+        </div>
         {b.customers_love.length > 0 && (
-          <p className="text-xs text-slate-600">
-            ❤️ {b.customers_love.map((c) => `"${c.quote}"`).join(" · ")}
+          <p className="text-xs leading-relaxed text-slate-500">
+            מה כותבים עליהם: {b.customers_love.map((c) => `"${c.quote}"`).join(" · ")}
           </p>
         )}
       </div>
 
       {/* התסריט */}
-      <div className="space-y-3 p-4">
+      <div className="space-y-4 p-5">
         <Line n={1} title="פתיחה" text={b.opener} />
         <Line n={2} title="למה התקשרתי" text={b.reason} />
         <Line n={3} title="לשאול ולשתוק" text={b.questions.join(" / ")} />
         <Line n={4} title="בקשה קטנה" text={b.small_ask} />
         <Line n={5} title="שיחה עם דוד" text={b.meeting_ask} />
+      </div>
 
-        {b.objections.length > 0 && (
-          <div className="space-y-1 pt-1">
-            {b.objections.map((o, i) => (
-              <details key={i} className="rounded-lg border border-amber-200 bg-white">
-                <summary className="cursor-pointer px-3 py-1.5 text-sm font-semibold text-amber-900">
-                  אם אומרים: &ldquo;{o.they_say}&rdquo;
-                </summary>
-                <p className="px-3 pb-2 text-sm text-slate-800">{o.you_say}</p>
-              </details>
-            ))}
-          </div>
-        )}
+      {b.objections.length > 0 && (
+        <div className="border-t border-line">
+          {b.objections.map((o, i) => (
+            <details key={i} className="group border-b border-line last:border-b-0">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3 text-sm text-slate-800 hover:text-paper">
+                <span>אם אומרים: &ldquo;{o.they_say}&rdquo;</span>
+                <span aria-hidden className="text-slate-400 transition-transform group-open:rotate-45">+</span>
+              </summary>
+              <p className="px-5 pb-4 text-sm leading-relaxed text-slate-700">{o.you_say}</p>
+            </details>
+          ))}
+        </div>
+      )}
 
-        {b.watch_out.length > 0 && <p className="text-xs text-slate-600">⚠️ {b.watch_out[0]}</p>}
-        {(b.warnings || []).length > 0 && (
-          <p className="text-xs text-rose-700">{(b.warnings || []).join(" · ")}</p>
-        )}
-
-        <button type="button" onClick={() => load(true)} className="text-xs text-slate-400 underline">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-5 py-3">
+        <p className="text-xs text-slate-500">
+          {b.watch_out[0] || ""}
+          {(b.warnings || []).length > 0 && <span className="text-rose-700"> {(b.warnings || []).join(" · ")}</span>}
+        </p>
+        <button type="button" onClick={() => load(true)} className="text-xs text-slate-500 hover:text-paper">
           להכין מחדש
         </button>
       </div>

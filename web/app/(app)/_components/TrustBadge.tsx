@@ -37,7 +37,7 @@ export function getLeadTrust(lead: Record<string, unknown>): LeadTrust {
     return {
       level: "verified",
       source: "Google Places",
-      emoji: "✅",
+      emoji: "",
       description: "מאומת על ידי גוגל",
       bgClass: "bg-emerald-100 text-emerald-800",
       borderClass: "border-emerald-300",
@@ -49,7 +49,7 @@ export function getLeadTrust(lead: Record<string, unknown>): LeadTrust {
     return {
       level: "social",
       source: "Instagram",
-      emoji: "📸",
+      emoji: "",
       description: "יש דף אינסטגרם אמיתי",
       bgClass: "bg-pink-100 text-pink-800",
       borderClass: "border-pink-300",
@@ -59,7 +59,7 @@ export function getLeadTrust(lead: Record<string, unknown>): LeadTrust {
     return {
       level: "social",
       source: "Facebook",
-      emoji: "💙",
+      emoji: "",
       description: "יש דף פייסבוק אמיתי",
       bgClass: "bg-blue-100 text-blue-800",
       borderClass: "border-blue-300",
@@ -71,7 +71,7 @@ export function getLeadTrust(lead: Record<string, unknown>): LeadTrust {
     return {
       level: "verified",
       source: "אתר עסק",
-      emoji: "🌐",
+      emoji: "",
       description: "אתר אמיתי שניתן לבדוק",
       bgClass: "bg-teal-100 text-teal-800",
       borderClass: "border-teal-300",
@@ -83,7 +83,7 @@ export function getLeadTrust(lead: Record<string, unknown>): LeadTrust {
     return {
       level: "community",
       source: "OpenStreetMap",
-      emoji: "🗺️",
+      emoji: "",
       description: "נתוני קהילה אמיתיים",
       bgClass: "bg-amber-100 text-amber-800",
       borderClass: "border-amber-300",
@@ -94,7 +94,7 @@ export function getLeadTrust(lead: Record<string, unknown>): LeadTrust {
   return {
     level: "unknown",
     source: "לא ידוע",
-    emoji: "❓",
+    emoji: "",
     description: "מקור לא מאומת",
     bgClass: "bg-slate-100 text-slate-600",
     borderClass: "border-slate-300",
@@ -108,10 +108,11 @@ export function TrustBadgeSmall({ lead }: { lead: Record<string, unknown> }) {
   const trust = getLeadTrust(lead);
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${trust.bgClass}`}
+      className="inline-flex items-center gap-1.5 text-xs text-slate-500"
       title={trust.description}
     >
-      {trust.emoji} {trust.source}
+      <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${trust.level === "unknown" ? "bg-slate-400" : "bg-emerald-500"}`} />
+      {trust.source}
     </span>
   );
 }
@@ -123,18 +124,18 @@ export function TrustBadgeFull({ lead }: { lead: Record<string, unknown> }) {
   const trust = getLeadTrust(lead);
   return (
     <div
-      className={`rounded-xl border-2 p-3 ${trust.bgClass} ${trust.borderClass}`}
+      className="rounded-2xl border border-line bg-white p-4"
     >
-      <div className="flex items-center gap-2">
-        <span className="text-2xl">{trust.emoji}</span>
+      <div className="flex items-center gap-3">
+        <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${trust.level === "unknown" ? "bg-slate-400" : "bg-emerald-500"}`} />
         <div>
-          <p className="text-sm font-bold">
+          <p className="text-sm font-medium text-paper">
             {trust.level === "verified" && "ליד מאומת"}
             {trust.level === "community" && "ליד אמיתי"}
             {trust.level === "social" && "ליד מסושיאל אמיתי"}
             {trust.level === "unknown" && "מקור לא ידוע"}
           </p>
-          <p className="text-xs opacity-90">
+          <p className="text-xs text-slate-600">
             {trust.description} · מקור: {trust.source}
           </p>
         </div>

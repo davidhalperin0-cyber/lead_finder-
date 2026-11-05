@@ -8,11 +8,11 @@ type WonForm = { amount: string; what: string };
 type LostForm = { reason: string; canReturn: boolean; returnDate: string };
 
 const LOST_REASONS = [
-  { key: "price",        label: "💰 מחיר גבוה" },
-  { key: "competitor",   label: "🏃 הלכו למתחרה" },
-  { key: "no_decision",  label: "🤷 לא קיבלו החלטה" },
-  { key: "bad_timing",   label: "⏳ עיתוי לא טוב" },
-  { key: "ghosted",      label: "👻 הפסיקו להגיב" },
+  { key: "price",        label: "מחיר גבוה" },
+  { key: "competitor",   label: "הלכו למתחרה" },
+  { key: "no_decision",  label: "לא קיבלו החלטה" },
+  { key: "bad_timing",   label: "עיתוי לא טוב" },
+  { key: "ghosted",      label: "הפסיקו להגיב" },
   { key: "other",        label: "אחר" },
 ];
 
@@ -62,12 +62,12 @@ export default function InterestedPage() {
 
   return (
     <div className="space-y-3 pb-4">
-      <header className="flex items-end justify-between gap-2">
+      <header className="mb-3 flex items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold">🔥 מתעניינים</h1>
-          <p className="text-xs text-slate-500">לידים שהביעו עניין — תור לסגור!</p>
+          <h1 className="text-[2rem] font-light leading-tight tracking-tight text-paper sm:text-[2.5rem]">מתעניינים</h1>
+          <p className="mt-1 text-[15px] text-slate-600">לידים שהביעו עניין — תור לסגור!</p>
         </div>
-        <span className="rounded bg-orange-100 px-2 py-0.5 text-sm font-bold text-orange-700">
+        <span className="chip tabular-nums">
           {leads.length}
         </span>
       </header>
@@ -75,7 +75,7 @@ export default function InterestedPage() {
       {loading && <p className="text-sm text-slate-500">טוען…</p>}
 
       {!loading && leads.length === 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
+        <div className="rounded-[1.25rem] border border-line bg-white p-6 text-center">
           <p className="text-base font-bold text-slate-800">אין לידים מתעניינים כרגע</p>
           <p className="mt-1 text-sm text-slate-500">
             סמן ב"בתהליך" לידים שהביעו עניין — הם יופיעו כאן
@@ -94,7 +94,7 @@ export default function InterestedPage() {
                 lead={L as LeadCardData}
                 onDeleted={() => reload()}
                 primaryAction={{
-                  label: busy === id ? "..." : "💰 סגור עסקה",
+                  label: busy === id ? "..." : "סגור עסקה",
                   tone: "emerald",
                   onClick: () => {
                     setWonFor(id);
@@ -103,7 +103,7 @@ export default function InterestedPage() {
                 }}
                 secondaryActions={[
                   {
-                    label: "💔 לא נסגר",
+                    label: "לא נסגר",
                     tone: "rose",
                     onClick: () => {
                       setLostFor(id);
@@ -114,8 +114,8 @@ export default function InterestedPage() {
               />
 
               {showWon && (
-                <div className="mt-2 rounded-xl border-2 border-emerald-400 bg-emerald-50 p-3">
-                  <p className="text-sm font-bold text-emerald-900">🎉 מזל טוב! איזה עסקה סגרת?</p>
+                <div className="mt-2 rounded-2xl border border-line bg-slate-50 p-4">
+                  <p className="text-sm font-bold text-emerald-900">מזל טוב! איזה עסקה סגרת?</p>
                   <div className="mt-2 space-y-2">
                     <input
                       type="number"
@@ -137,7 +137,7 @@ export default function InterestedPage() {
                         type="button"
                         onClick={() => saveWon(id)}
                         disabled={!wonF.amount || busy === id}
-                        className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-50"
+                        className="flex-1 rounded-full btn-pearl px-4 py-2 text-sm disabled:opacity-50"
                       >
                         {busy === id ? "שומר..." : "סגירה!"}
                       </button>
@@ -154,7 +154,7 @@ export default function InterestedPage() {
               )}
 
               {showLost && (
-                <div className="mt-2 rounded-xl border-2 border-rose-300 bg-rose-50 p-3">
+                <div className="mt-2 rounded-2xl border border-line bg-slate-50 p-4">
                   <p className="text-sm font-bold text-rose-900">למה זה לא נסגר?</p>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     {LOST_REASONS.map((r) => (
@@ -164,7 +164,7 @@ export default function InterestedPage() {
                         onClick={() => setLostF({ ...lostF, reason: r.key })}
                         className={`rounded-lg border px-2 py-2 text-xs font-semibold ${
                           lostF.reason === r.key
-                            ? "border-rose-500 bg-rose-200 text-rose-900"
+                            ? "border-paper bg-paper text-ink"
                             : "border-rose-200 bg-white text-rose-800"
                         }`}
                       >
@@ -193,7 +193,7 @@ export default function InterestedPage() {
                       type="button"
                       onClick={() => saveLost(id)}
                       disabled={!lostF.reason || busy === id}
-                      className="flex-1 rounded-lg bg-rose-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-50"
+                      className="flex-1 rounded-full btn-pearl px-4 py-2 text-sm disabled:opacity-50"
                     >
                       {busy === id ? "שומר..." : "שמור"}
                     </button>

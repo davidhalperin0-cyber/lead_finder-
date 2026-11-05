@@ -5,11 +5,11 @@ import LeadCard, { LeadCardData } from "../../_components/LeadCard";
 import { useLeadsByStatus, patchLead, quickStatus } from "../../_components/useLeads";
 
 const REASON_LABEL: Record<string, string> = {
-  price:        "💰 מחיר גבוה",
-  competitor:   "🏃 הלכו למתחרה",
-  no_decision:  "🤷 לא קיבלו החלטה",
-  bad_timing:   "⏳ עיתוי לא טוב",
-  ghosted:      "👻 הפסיקו להגיב",
+  price:        "מחיר גבוה",
+  competitor:   "הלכו למתחרה",
+  no_decision:  "לא קיבלו החלטה",
+  bad_timing:   "עיתוי לא טוב",
+  ghosted:      "הפסיקו להגיב",
   other:        "אחר",
 };
 
@@ -74,7 +74,7 @@ export default function LostPage() {
           primaryAction={
             L.lost_can_return
               ? {
-                  label: busy === id ? "..." : "🔄 חזור לטיפול",
+                  label: busy === id ? "..." : "חזור לטיפול",
                   tone: "brand",
                   onClick: () => act(id, () => quickStatus(id, "start")),
                 }
@@ -82,7 +82,7 @@ export default function LostPage() {
           }
           secondaryActions={[
             {
-              label: "📅 קבע תאריך חזרה",
+              label: "קבע תאריך חזרה",
               tone: "amber",
               onClick: () => {
                 setEditFor(id);
@@ -95,23 +95,23 @@ export default function LostPage() {
           ]}
         />
         <div className="mt-1 flex items-center gap-2 text-xs">
-          <span className="rounded bg-rose-100 px-2 py-0.5 font-bold text-rose-700">
+          <span className="chip tabular-nums">
             {REASON_LABEL[reason] || reason}
           </span>
           {date && (
             <span
               className={`rounded px-2 py-0.5 font-bold ${
-                dueNow ? "bg-amber-200 text-amber-900" : "bg-slate-100 text-slate-700"
+                dueNow ? "bg-amber-200 text-amber-900" : "border border-line text-slate-600 hover:text-paper"
               }`}
             >
-              {dueNow ? "⏰ הזמן לחזור: " : "חזרה: "}
+              {dueNow ? "הזמן לחזור: " : "חזרה: "}
               {date}
             </span>
           )}
         </div>
 
         {editFor === id && (
-          <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50 p-3">
+          <div className="mt-2 rounded-2xl border border-line bg-slate-50 p-4">
             <p className="text-sm font-medium text-amber-900">תאריך לחזור אליהם:</p>
             <div className="mt-2 flex gap-2">
               <input
@@ -123,7 +123,7 @@ export default function LostPage() {
               <button
                 type="button"
                 onClick={() => saveEditDate(id)}
-                className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-bold text-white"
+                className="rounded-full btn-pearl px-4 py-2 text-sm"
               >
                 שמור
               </button>
@@ -143,12 +143,12 @@ export default function LostPage() {
 
   return (
     <div className="space-y-4 pb-4">
-      <header className="flex items-end justify-between gap-2">
+      <header className="mb-3 flex items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold">💔 לא נסגרו</h1>
-          <p className="text-xs text-slate-500">היה עניין, לא הסתדר — לפעמים אפשר לחזור</p>
+          <h1 className="text-[2rem] font-light leading-tight tracking-tight text-paper sm:text-[2.5rem]">לא נסגרו</h1>
+          <p className="mt-1 text-[15px] text-slate-600">היה עניין, לא הסתדר — לפעמים אפשר לחזור</p>
         </div>
-        <span className="rounded bg-rose-100 px-2 py-0.5 text-sm font-bold text-rose-700">
+        <span className="chip tabular-nums">
           {leads.length}
         </span>
       </header>
@@ -156,15 +156,15 @@ export default function LostPage() {
       {loading && <p className="text-sm text-slate-500">טוען…</p>}
 
       {!loading && leads.length === 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
-          <p className="text-base font-bold text-slate-800">אין כאן כלום 🎉</p>
+        <div className="rounded-[1.25rem] border border-line bg-white p-6 text-center">
+          <p className="text-base font-bold text-slate-800">אין כאן כלום </p>
         </div>
       )}
 
       {groups.canReturn.length > 0 && (
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-amber-700">⏰ אפשר לחזור אליהם</h2>
+            <h2 className="text-base font-bold text-amber-700">אפשר לחזור אליהם</h2>
             <span className="text-xs text-amber-700">{groups.canReturn.length}</span>
           </div>
           <ul className="space-y-3">{groups.canReturn.map(renderLost)}</ul>
@@ -174,7 +174,7 @@ export default function LostPage() {
       {groups.dead.length > 0 && (
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-700">🪦 ארכיון</h2>
+            <h2 className="text-base font-bold text-slate-700">ארכיון</h2>
             <span className="text-xs text-slate-500">{groups.dead.length}</span>
           </div>
           <ul className="space-y-3">{groups.dead.map(renderLost)}</ul>

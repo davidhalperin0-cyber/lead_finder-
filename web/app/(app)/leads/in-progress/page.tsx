@@ -31,12 +31,12 @@ export default function InProgressPage() {
 
   return (
     <div className="space-y-3 pb-4">
-      <header className="flex items-end justify-between gap-2">
+      <header className="mb-3 flex items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold">💬 בתהליך</h1>
-          <p className="text-xs text-slate-500">לידים שכבר התחלתי לטפל בהם</p>
+          <h1 className="text-[2rem] font-light leading-tight tracking-tight text-paper sm:text-[2.5rem]">בתהליך</h1>
+          <p className="mt-1 text-[15px] text-slate-600">לידים שכבר התחלתי לטפל בהם</p>
         </div>
-        <span className="rounded bg-indigo-100 px-2 py-0.5 text-sm font-bold text-indigo-700">
+        <span className="chip tabular-nums">
           {leads.length}
         </span>
       </header>
@@ -44,7 +44,7 @@ export default function InProgressPage() {
       {loading && <p className="text-sm text-slate-500">טוען…</p>}
 
       {!loading && leads.length === 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
+        <div className="rounded-[1.25rem] border border-line bg-white p-6 text-center">
           <p className="text-base font-bold text-slate-800">אין לידים בטיפול</p>
           <p className="mt-1 text-sm text-slate-500">
             כדי להתחיל, היכנס ל"חדשים" ולחץ "התחל טיפול"
@@ -62,29 +62,29 @@ export default function InProgressPage() {
                 onDeleted={() => reload()}
                 secondaryActions={[
                   {
-                    label: "📞 לא ענה",
+                    label: "לא ענה",
                     tone: "slate",
                     onClick: () =>
                       act(id, () => logActivity(id, { activity_type: "call_attempt", outcome: "no_answer" })),
                   },
                   {
-                    label: "💬 ענה",
+                    label: "ענה",
                     tone: "brand",
                     onClick: () =>
                       act(id, () => logActivity(id, { activity_type: "call_done", outcome: "answered" })),
                   },
                   {
-                    label: "🔥 מתעניין",
+                    label: "מתעניין",
                     tone: "emerald",
                     onClick: () => act(id, () => quickStatus(id, "interested")),
                   },
                   {
-                    label: "❌ לא מעוניין",
+                    label: "לא מעוניין",
                     tone: "rose",
                     onClick: () => act(id, () => quickStatus(id, "not_interested")),
                   },
                   {
-                    label: "⏰ קבע מעקב",
+                    label: "קבע מעקב",
                     tone: "amber",
                     onClick: () => {
                       setFollowUpFor(id);
@@ -94,7 +94,7 @@ export default function InProgressPage() {
                 ]}
               />
               {followUpFor === id && (
-                <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50 p-3">
+                <div className="mt-2 rounded-2xl border border-line bg-slate-50 p-4">
                   <p className="text-sm font-medium text-amber-900">בוחר תאריך לחזרה:</p>
                   <div className="mt-2 flex gap-2">
                     <input
@@ -106,7 +106,7 @@ export default function InProgressPage() {
                     <button
                       type="button"
                       onClick={() => setFollowUp(id)}
-                      className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-bold text-white"
+                      className="rounded-full btn-pearl px-4 py-2 text-sm"
                     >
                       שמור
                     </button>

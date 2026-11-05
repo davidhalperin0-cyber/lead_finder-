@@ -17,7 +17,7 @@ export default function LogoutButton() {
     <button
       type="button"
       onClick={handleLogout}
-      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+      className="rounded-full border border-line px-3.5 py-1.5 text-xs text-slate-600 transition-colors hover:border-slate-300 hover:text-paper"
       aria-label="התנתקות"
     >
       התנתקות

@@ -58,10 +58,10 @@ export function waLink(phone: string | undefined, wa?: string): string | null {
 /** מה יש לעסק היום — הזווית שהשיחה נפתחת ממנה. */
 function presenceLabel(lead: LeadCardData): { icon: string; text: string; tone: string } | null {
   const url = (lead.social_url || "").toLowerCase();
-  if (url.includes("instagram")) return { icon: "📷", text: "רק אינסטגרם", tone: "bg-pink-100 text-pink-800" };
-  if (url.includes("facebook")) return { icon: "👥", text: "רק פייסבוק", tone: "bg-blue-100 text-blue-800" };
-  if (url.includes("tiktok")) return { icon: "🎵", text: "רק טיקטוק", tone: "bg-slate-900 text-white" };
-  if (lead.no_website) return { icon: "🚫", text: "אין שום נוכחות", tone: "bg-amber-100 text-amber-900" };
+  if (url.includes("instagram")) return { icon: "", text: "רק אינסטגרם", tone: "bg-pink-100 text-pink-800" };
+  if (url.includes("facebook")) return { icon: "", text: "רק פייסבוק", tone: "bg-blue-100 text-blue-800" };
+  if (url.includes("tiktok")) return { icon: "", text: "רק טיקטוק", tone: "bg-slate-900 text-white" };
+  if (lead.no_website) return { icon: "", text: "אין שום נוכחות ברשת", tone: "bg-amber-100 text-amber-900" };
   return null;
 }
 
@@ -74,11 +74,11 @@ function socialProfileLink(lead: LeadCardData): string | null {
 }
 
 const TONES: Record<string, string> = {
-  brand: "bg-brand text-white",
-  emerald: "bg-emerald-600 text-white",
-  amber: "bg-amber-500 text-white",
-  rose: "bg-rose-600 text-white",
-  slate: "bg-slate-200 text-slate-800",
+  brand: "border border-[rgba(17,17,20,0.14)] text-slate-800 hover:text-paper",
+  emerald: "border border-emerald-300 text-emerald-700 hover:bg-emerald-50",
+  amber: "border border-amber-300 text-amber-700 hover:bg-amber-50",
+  rose: "border border-rose-300 text-rose-700 hover:bg-rose-50",
+  slate: "border border-line text-slate-700 hover:text-paper",
 };
 
 type Props = {
@@ -118,25 +118,21 @@ export default function LeadCard({ lead, primaryAction, secondaryActions, onDele
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="card-elevated p-5">
       <Link href={`/leads/${lead.id}`} className="block">
         <div className="flex items-start justify-between gap-2">
-          <span className="font-semibold text-slate-900 leading-snug">
+          <span className="text-[17px] font-semibold leading-snug text-paper">
             {lead.business_name || "ללא שם"}
           </span>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
             {presence && (
-              <span className={`rounded px-2 py-0.5 text-xs font-bold ${presence.tone}`}>
-                {presence.icon} {presence.text}
+              <span className="chip">
+                {presence.text}
               </span>
             )}
             {Number(lead.match_score || 0) > 0 && (
               <span
-                className={`rounded px-2 py-0.5 text-xs font-bold ${
-                  Number(lead.match_score) >= 75
-                    ? "bg-emerald-100 text-emerald-700"
-                    : "bg-amber-100 text-amber-700"
-                }`}
+                className={`chip ${Number(lead.match_score) >= 75 ? "!text-emerald-700" : "!text-amber-700"}`}
                 title={lead.match_reason || ""}
               >
                 {lead.match_score}%
@@ -144,7 +140,7 @@ export default function LeadCard({ lead, primaryAction, secondaryActions, onDele
             )}
             {/* ציון האתר רלוונטי רק כשיש אתר לנתח */}
             {!lead.no_website && (
-              <span className="rounded bg-brand/10 px-2 py-0.5 text-sm font-bold text-brand">
+              <span className="chip !text-brand">
                 {lead.grade || "—"}/{lead.score || 0}
               </span>
             )}
@@ -153,14 +149,14 @@ export default function LeadCard({ lead, primaryAction, secondaryActions, onDele
 
         {/* הוכחת חיוּת — האות החזק ביותר שהעסק אמיתי ופעיל */}
         {reviews > 0 && (
-          <p className="mt-1.5 text-sm font-medium text-slate-800">
-            ⭐ {rating > 0 ? rating.toFixed(1) : "—"}
+          <p className="mt-2 text-sm text-slate-800">
+            <span className="text-amber-600"></span> {rating > 0 ? rating.toFixed(1) : "—"}
             <span className="text-slate-500 font-normal">
               {" · "}
               {reviews.toLocaleString("he-IL")} ביקורות בגוגל
             </span>
             {reviews >= 100 && (
-              <span className="mr-1 rounded bg-emerald-100 px-1.5 py-0.5 text-xs font-bold text-emerald-800">
+              <span className="chip mr-1.5 !py-0 !text-emerald-700">
                 עסק פעיל
               </span>
             )}
@@ -171,11 +167,11 @@ export default function LeadCard({ lead, primaryAction, secondaryActions, onDele
           <TrustBadgeSmall lead={lead as Record<string, unknown>} />
         </div>
 
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1.5 text-xs text-slate-500">
           {lead.search_city || ""}
           {lead.search_business_type ? " · " + lead.search_business_type : ""}
-          {Number(lead.domain_age_years || 0) > 0 ? ` · 🗓️ ${lead.domain_age_years} שנים` : ""}
-          {Number(lead.call_count || 0) > 0 ? ` · 📞 ${lead.call_count}` : ""}
+          {Number(lead.domain_age_years || 0) > 0 ? ` · דומיין בן ${lead.domain_age_years}` : ""}
+          {Number(lead.call_count || 0) > 0 ? ` · ${lead.call_count} שיחות` : ""}
         </p>
 
         {lead.strongest_problem && !lead.no_website && (
@@ -186,18 +182,18 @@ export default function LeadCard({ lead, primaryAction, secondaryActions, onDele
         )}
 
         {phone && (
-          <p className="mt-1 text-base font-semibold tracking-wide text-emerald-700" dir="ltr">
+          <p className="mt-2 text-right text-base font-medium tracking-wide text-slate-800" dir="ltr">
             {phone}
           </p>
         )}
       </Link>
 
       {/* פס פעולות */}
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-4 flex items-center gap-2">
         {tel && (
           <a
             href={tel}
-            className="flex-1 rounded-lg bg-emerald-600 py-2.5 text-center text-sm font-bold text-white"
+            className="btn-pearl flex-1 py-2.5 text-center text-sm"
           >
             חיוג
           </a>
@@ -207,7 +203,7 @@ export default function LeadCard({ lead, primaryAction, secondaryActions, onDele
             href={wam}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex-1 rounded-lg bg-green-500 py-2.5 text-center text-sm font-bold text-white"
+            className="flex-1 rounded-full border border-emerald-300 py-2.5 text-center text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-50"
           >
             WhatsApp
           </a>
@@ -217,7 +213,7 @@ export default function LeadCard({ lead, primaryAction, secondaryActions, onDele
             href={social}
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-lg bg-pink-500 px-3 py-2.5 text-center text-sm font-bold text-white"
+            className="rounded-full border border-line px-4 py-2.5 text-center text-sm text-slate-700 transition-colors hover:text-paper"
             title="פתחי את הפרופיל לפני השיחה — תדעי איך העסק נראה"
           >
             פרופיל
@@ -227,7 +223,7 @@ export default function LeadCard({ lead, primaryAction, secondaryActions, onDele
           <button
             type="button"
             onClick={primaryAction.onClick}
-            className={`flex-1 rounded-lg py-2.5 text-sm font-bold ${TONES[primaryAction.tone || "brand"]}`}
+            className={`flex-1 rounded-full py-2.5 text-sm font-semibold ${TONES[primaryAction.tone || "brand"]}`}
           >
             {primaryAction.label}
           </button>
@@ -241,7 +237,7 @@ export default function LeadCard({ lead, primaryAction, secondaryActions, onDele
               key={i}
               type="button"
               onClick={a.onClick}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${TONES[a.tone || "slate"]}`}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-medium ${TONES[a.tone || "slate"]}`}
             >
               {a.label}
             </button>
@@ -261,7 +257,7 @@ export default function LeadCard({ lead, primaryAction, secondaryActions, onDele
       )}
 
       {confirming && (
-        <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3">
+        <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 p-3">
           <p className="text-xs font-semibold text-rose-900">
             להסיר את &quot;{lead.business_name || "הליד"}&quot;?
           </p>
@@ -271,7 +267,7 @@ export default function LeadCard({ lead, primaryAction, secondaryActions, onDele
               type="button"
               disabled={busy}
               onClick={() => handleDelete("lead")}
-              className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+              className="rounded-full bg-rose-600 px-3.5 py-1.5 text-xs font-bold text-white disabled:opacity-50"
             >
               {busy ? "מסירה…" : "הסירי את הליד"}
             </button>
@@ -279,7 +275,7 @@ export default function LeadCard({ lead, primaryAction, secondaryActions, onDele
               type="button"
               disabled={busy}
               onClick={() => handleDelete("brand")}
-              className="rounded-lg bg-rose-800 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+              className="rounded-full bg-rose-500 px-3.5 py-1.5 text-xs font-bold text-white disabled:opacity-50"
               title="לרשתות — מסיר את כל הסניפים, גם כאלה שעוד לא נמצאו"
             >
               כל הרשת
@@ -291,7 +287,7 @@ export default function LeadCard({ lead, primaryAction, secondaryActions, onDele
                 setConfirming(false);
                 setErr(null);
               }}
-              className="rounded-lg bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-800"
+              className="rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-slate-800"
             >
               ביטול
             </button>

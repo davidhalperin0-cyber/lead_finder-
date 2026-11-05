@@ -27,31 +27,29 @@ export default function WonPage() {
   return (
     <div className="space-y-4 pb-4">
       <header>
-        <h1 className="text-xl font-bold">💰 נסגרו</h1>
-        <p className="text-xs text-slate-500">כל העסקאות שסגרת</p>
+        <h1 className="text-[2rem] font-light leading-tight tracking-tight text-paper sm:text-[2.5rem]">נסגרו</h1>
+        <p className="mt-1 text-[15px] text-slate-600">כל העסקאות שסגרת</p>
       </header>
 
-      <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 p-4 text-white shadow-lg">
-        <p className="text-xs opacity-90">סה"כ הכנסות</p>
-        <p className="mt-1 text-3xl font-extrabold">₪{totals.total.toLocaleString()}</p>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="rounded-lg bg-white/15 p-2">
-            <p className="text-[11px] opacity-80">עסקאות</p>
-            <p className="text-lg font-bold">{totals.count}</p>
+      <section className="grid grid-cols-3 divide-x divide-x-reverse divide-line rounded-[1.25rem] border border-line bg-white">
+        {[
+          ["סה\"כ הכנסות", `₪${totals.total.toLocaleString("he-IL")}`],
+          ["עסקאות", totals.count.toLocaleString("he-IL")],
+          ["ממוצע לעסקה", `₪${totals.avg.toLocaleString("he-IL")}`],
+        ].map(([l, v]) => (
+          <div key={l} className="p-5">
+            <p className="text-xs text-slate-500">{l}</p>
+            <p className="mt-1.5 text-[1.6rem] font-light tabular-nums text-paper">{v}</p>
           </div>
-          <div className="rounded-lg bg-white/15 p-2">
-            <p className="text-[11px] opacity-80">ממוצע לעסקה</p>
-            <p className="text-lg font-bold">₪{totals.avg.toLocaleString()}</p>
-          </div>
-        </div>
-      </div>
+        ))}
+      </section>
 
       {loading && <p className="text-sm text-slate-500">טוען…</p>}
 
       {!loading && leads.length === 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
+        <div className="rounded-[1.25rem] border border-line bg-white p-6 text-center">
           <p className="text-base font-bold text-slate-800">עוד אין עסקאות סגורות</p>
-          <p className="mt-1 text-sm text-slate-500">העסקה הראשונה שלך תופיע כאן 💪</p>
+          <p className="mt-1 text-sm text-slate-500">העסקה הראשונה שלך תופיע כאן</p>
         </div>
       )}
 
@@ -63,9 +61,9 @@ export default function WonPage() {
           return (
             <li key={id}>
               <LeadCard lead={L} onDeleted={() => reload()} />
-              <div className="mt-1 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+              <div className="mt-2 rounded-2xl border border-line px-4 py-3 text-sm text-slate-700">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold">₪{amount.toLocaleString()}</span>
+                  <span className="tabular-nums text-emerald-700">₪{amount.toLocaleString("he-IL")}</span>
                   {dt && <span className="opacity-80">{dt}</span>}
                 </div>
                 {L.deal_what_sold && <p className="mt-0.5 opacity-90">{L.deal_what_sold}</p>}

@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/client";
 import { apiFetch } from "@/lib/api";
 import { TrustBadgeFull } from "../../_components/TrustBadge";
 import CallBriefCard, { type CallBrief } from "../../_components/CallBriefCard";
+import DemoLink from "../../_components/DemoLink";
+import { Icon, Panel, btn } from "../../_components/ui";
 
 type Lead = Record<string, unknown>;
 
@@ -62,7 +64,7 @@ function detectSocialPlatform(url: string): {
     return {
       platform: "instagram",
       label: "שליחת הודעה באינסטגרם",
-      emoji: "📸",
+      emoji: "",
       dmUrl: handle ? `https://www.instagram.com/${handle}/` : url,
       bgClass: "bg-gradient-to-r from-pink-500 to-orange-500",
     };
@@ -73,7 +75,7 @@ function detectSocialPlatform(url: string): {
     return {
       platform: "facebook",
       label: "שליחת הודעה ב-Messenger",
-      emoji: "💬",
+      emoji: "",
       dmUrl: handle && !handle.includes(".") ? `https://m.me/${handle}` : url,
       bgClass: "bg-gradient-to-r from-blue-600 to-blue-700",
     };
@@ -82,7 +84,7 @@ function detectSocialPlatform(url: string): {
     return {
       platform: "gmaps",
       label: "פתיחה ב-Google Maps",
-      emoji: "🗺️",
+      emoji: "",
       dmUrl: url,
       bgClass: "bg-gradient-to-r from-emerald-600 to-teal-600",
     };
@@ -90,7 +92,7 @@ function detectSocialPlatform(url: string): {
   return {
     platform: "other",
     label: "פתיחת קישור",
-    emoji: "🔗",
+    emoji: "",
     dmUrl: url,
     bgClass: "bg-slate-600",
   };
@@ -244,428 +246,256 @@ export default function LeadDetailPage() {
   const noWebsite = Boolean(lead.no_website);
   const socialUrl = ensureHttps(String(lead.social_url || ""));
 
-  return (
-    <div className="space-y-4 pb-28">
-      <div className="flex items-center justify-between">
-        <Link href="/dashboard" className="text-sm text-brand">
-          ← חזרה לרשימה
-        </Link>
-        <div className="flex gap-2">
-          <button
-            onClick={() => remove("lead")}
-            disabled={deleting}
-            className="rounded-md border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-            title="הליד יוסר ולא יחזור בחיפושים הבאים"
-          >
-            {deleting ? "מסיר..." : "🗑️ הסר ליד"}
-          </button>
-          <button
-            onClick={() => remove("brand")}
-            disabled={deleting}
-            className="rounded-md border border-rose-400 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-900 hover:bg-rose-100 disabled:opacity-50"
-            title="לרשתות כמו ארומה — מסיר את כל הסניפים, גם עתידיים"
-          >
-            הסר את כל הרשת
-          </button>
-        </div>
+  const social = detectSocialPlatform(socialUrl);
+  const tel = phone ? telHref(phone) : null;
+  const wam = waLink(phone, wa);
+  const dl = "text-slate-500";
+  const dd = "text-slate-800";
+  const field = "mt-1.5 w-full rounded-xl border border-line px-3.5 py-2.5 text-sm";
+  const STATUSES: [string, string][] = [
+    ["new", "חדש"],
+    ["in_progress", "בתהליך"],
+    ["interested", "מתעניין"],
+    ["follow_up", "לחזור אליו"],
+    ["not_interested", "לא מעוניין"],
+    ["won", "נסגר"],
+    ["lost", "לא נסגר"],
+  ];
+  const listBlock = (title: string, items: string[]) =>
+    items.length > 0 && (
+      <div>
+        <h3 className="mb-1.5 text-xs text-slate-500">{title}</h3>
+        <ul className="list-disc space-y-1 pr-4 text-sm text-slate-800">
+          {items.map((x, i) => (
+            <li key={i}>{x}</li>
+          ))}
+        </ul>
       </div>
+    );
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h1 className="text-xl font-bold text-slate-900">{String(lead.business_name)}</h1>
-        <p className="text-sm text-slate-600 mt-1">
-          ציון {Number(lead.score)} · {String(lead.grade)} · הזדמנות {Number(lead.opportunity_score)}%
-          · סגירה משוערת {Number(lead.close_probability)}% · {String(lead.priority_level)}
+  return (
+    <div className="space-y-4 pb-10">
+      <Link href="/dashboard" className={`${btn.ghost} -mr-3`}>
+        <Icon name="back" size={16} />
+        חזרה
+      </Link>
+
+      {/* מי הם ואיך מגיעים אליהם */}
+      <Panel>
+        <h1 className="text-[1.75rem] font-light leading-tight tracking-tight text-paper sm:text-[2.25rem]">
+          {String(lead.business_name)}
+        </h1>
+        <p className="mt-1.5 text-sm text-slate-500">
+          {[lead.search_city, lead.search_business_type].filter(Boolean).map(String).join(" · ")}
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-5 flex flex-wrap gap-2">
+          {tel && (
+            <a href={tel} className={`${btn.primary} min-w-[9rem]`}>
+              <Icon name="phone" size={16} />
+              <span dir="ltr" className="tabular-nums">{phone}</span>
+            </a>
+          )}
+          {wam && (
+            <a href={wam} target="_blank" rel="noopener noreferrer" className={btn.secondary}>
+              <Icon name="chat" size={16} />
+              WhatsApp
+            </a>
+          )}
+          {social && (
+            <a href={social.dmUrl} target="_blank" rel="noopener noreferrer" className={btn.secondary}>
+              <Icon name={social.platform === "gmaps" ? "pin" : "chat"} size={16} />
+              {social.label}
+            </a>
+          )}
           {url && (
-            <a
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium"
-            >
-              פתיחת אתר
+            <a href={url} target="_blank" rel="noopener noreferrer" className={btn.secondary}>
+              <Icon name="globe" size={16} />
+              האתר שלהם
             </a>
           )}
-          {phone && telHref(phone) && (
-            <a
-              href={telHref(phone)!}
-              className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white"
-            >
-              חיוג
-            </a>
-          )}
-          {waLink(phone, wa) && (
-            <a
-              href={waLink(phone, wa)!}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-lg bg-green-500 px-3 py-2 text-sm font-medium text-white"
-            >
-              WhatsApp (ידני)
-            </a>
-          )}
-          {(() => {
-            const social = detectSocialPlatform(socialUrl);
-            if (!social) return null;
-            return (
-              <a
-                href={social.dmUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`rounded-lg px-3 py-2 text-sm font-bold text-white ${social.bgClass} shadow-md btn-pop`}
-              >
-                {social.emoji} {social.platform === "gmaps" ? "Google Maps" : social.platform === "instagram" ? "Instagram DM" : social.platform === "facebook" ? "Messenger" : "סושיאל"}
-              </a>
-            );
-          })()}
-          <button
-            type="button"
-            onClick={() => copyText(opening)}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          >
-            העתקת משפט פתיחה
-          </button>
         </div>
-
-        {/* סימן אמינות - מאיפה הליד הזה הגיע */}
-        <div className="mt-3">
+        <div className="mt-5">
           <TrustBadgeFull lead={lead} />
         </div>
-      </div>
+      </Panel>
 
-      {/* תקציר ההזדמנות */}
-      <section className="rounded-2xl border-2 border-brand bg-gradient-to-br from-[#1f4e78] to-[#2d6a9f] p-5 text-white shadow-lg">
-        <h2 className="text-lg font-bold text-brand-accent mb-3">למה דווקא הם?</h2>
-        <p className="text-sm opacity-90 mb-1">הבעיה החזקה</p>
-        <p className="font-semibold mb-3">{String(lead.strongest_problem || "—")}</p>
-        <p className="text-sm opacity-90 mb-1">למה זה פוגע בעסק</p>
-        <p className="text-sm">{String(lead.business_impact || "—")}</p>
-      </section>
+      {/* למה דווקא הם */}
+      <Panel title="למה דווקא הם">
+        <dl className="space-y-3">
+          <div>
+            <dt className="text-xs text-slate-500">הבעיה החזקה</dt>
+            <dd className="mt-0.5 text-[17px] leading-snug text-paper">{String(lead.strongest_problem || "—")}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-500">למה זה פוגע בעסק</dt>
+            <dd className="mt-0.5 text-sm leading-relaxed text-slate-800">{String(lead.business_impact || "—")}</dd>
+          </div>
+          {noWebsite && (
+            <div>
+              <dt className="text-xs text-slate-500">מצב ברשת</dt>
+              <dd className="mt-0.5 text-sm text-slate-800">
+                אין להם אתר בכלל. אפשר להציע את כל החבילה: דומיין, אחסון ועיצוב.
+              </dd>
+            </div>
+          )}
+        </dl>
+      </Panel>
 
-      {/* ===== הכנה ותסריט מותאמים לעסק הזה ===== */}
-      <section className="overflow-hidden rounded-2xl border-2 border-emerald-200 bg-white shadow-md">
-        <div className="bg-gradient-to-l from-emerald-600 to-emerald-700 px-4 py-3">
-          <h2 className="text-lg font-bold text-white">📞 הכנה לשיחה</h2>
-        </div>
-        <CallBriefCard
+      {/* הכנה לשיחה */}
+      <section className="overflow-hidden rounded-[1.25rem] border border-line bg-white">
+        <h2 className="border-b border-line px-5 py-4 text-[15px] font-medium text-paper">הכנה לשיחה</h2>
+        <CallBriefCard leadId={String(lead.id)} initial={(lead.call_brief as CallBrief | null) || null} />
+        <DemoLink
+          key={"demo-" + String(lead.id)}
           leadId={String(lead.id)}
-          initial={(lead.call_brief as CallBrief | null) || null}
+          name={String(lead.business_name || "")}
+          phone={String(lead.whatsapp || lead.phone || "")}
+          hasDemo={Boolean((lead.call_brief as { demo?: unknown } | null)?.demo)}
         />
       </section>
 
-      {url && (
-        <div className="rounded-xl border bg-slate-100 overflow-hidden">
-          <p className="text-xs text-slate-500 p-2">תצוגה מקדימה (אם האתר חוסם — ריק)</p>
-          <iframe src={url} className="w-full h-[280px] bg-white" title="preview" />
-        </div>
-      )}
-
-      {noWebsite && (
-        <section className="rounded-2xl border-2 border-amber-400 bg-gradient-to-br from-amber-50 to-orange-50 p-5 shadow-md">
-          <h2 className="text-lg font-bold text-amber-900 mb-2">
-            🔥 הזדמנות זהב — עסק בלי אתר
-          </h2>
-          <p className="text-sm text-amber-900 mb-3">
-            לעסק הזה <strong>אין אתר אינטרנט</strong>. זה הליד הכי שווה שיש — הם צריכים אתר חדש מאפס,
-            ואת יכולה להציע להם את כל החבילה (דומיין, אחסון, עיצוב).
-          </p>
-          {(() => {
-            const social = detectSocialPlatform(socialUrl);
-            if (!social) {
-              return (
-                <p className="text-xs text-amber-700 italic">
-                  אין קישור סושיאל — נסי לחייג טלפונית
-                </p>
-              );
-            }
-            return (
-              <div className="space-y-2">
-                <p className="text-xs font-bold text-amber-800">
-                  💡 דרך מקבילה לחיוג: שליחת הודעה דרך הסושיאל שלהם
-                </p>
-                <a
-                  href={social.dmUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`block ${social.bgClass} rounded-xl px-4 py-3 text-center text-base font-bold text-white shadow-lg btn-pop`}
-                >
-                  {social.emoji} {social.label}
-                </a>
-                <a
-                  href={socialUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-center text-xs text-amber-700 underline"
-                >
-                  לראות את הדף שלהם תחילה
-                </a>
-              </div>
-            );
-          })()}
-        </section>
-      )}
-
-      {(matchScore > 0 || matchReason) && (
-        <section className="rounded-xl border bg-white p-4">
-          <h2 className="font-bold text-brand mb-2">למה הליד הזה?</h2>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-sm text-slate-600">התאמה לתיאור שלך:</span>
-            <span
-              className={`rounded-full px-3 py-1 text-sm font-bold ${
-                matchScore >= 75
-                  ? "bg-emerald-100 text-emerald-800"
-                  : matchScore >= 50
-                  ? "bg-amber-100 text-amber-800"
-                  : "bg-slate-100 text-slate-700"
+      {/* ניהול הליד */}
+      <Panel title="מעקב">
+        <p className="text-xs text-slate-500">סטטוס</p>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {STATUSES.map(([v, l]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setStatus(v)}
+              aria-pressed={status === v}
+              className={`rounded-full px-3.5 py-1.5 text-xs transition-colors ${
+                status === v ? "bg-paper text-ink" : "border border-line text-slate-700 hover:text-paper"
               }`}
             >
-              {matchScore}/100
-            </span>
-          </div>
-          {matchReason && (
+              {l}
+            </button>
+          ))}
+        </div>
+        <label className="mt-4 block text-xs text-slate-500">
+          תאריך לחזור אליו
+          <input type="date" className={field} value={followUp} onChange={(e) => setFollowUp(e.target.value)} />
+        </label>
+        <label className="mt-4 block text-xs text-slate-500">
+          הערות
+          <textarea className={`${field} min-h-[110px] leading-relaxed`} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </label>
+        <div className="mt-4 flex items-center gap-3">
+          <button type="button" onClick={save} className={`${btn.primary} flex-1 py-3`}>
+            שמירה
+          </button>
+          <button type="button" onClick={() => copyText(opening)} className={btn.secondary}>
+            העתקת פתיחה
+          </button>
+        </div>
+        {toast && <p role="status" className="mt-3 text-center text-sm text-emerald-700">{toast}</p>}
+      </Panel>
+
+      {/* פרטים נוספים, מקופלים */}
+      <section className="overflow-hidden rounded-[1.25rem] border border-line bg-white">
+        {(matchScore > 0 || matchReason) && (
+          <details className="group border-b border-line">
+            <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-sm text-slate-800 hover:text-paper">
+              <span>התאמה לחיפוש שלך · {matchScore}/100</span>
+              <span aria-hidden className="text-slate-400 transition-transform group-open:rotate-45">+</span>
+            </summary>
+            <p className="px-5 pb-5 text-sm leading-relaxed text-slate-700">{matchReason || "—"}</p>
+          </details>
+        )}
+
+        {!noWebsite && (
+          <details className="group border-b border-line">
+            <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-sm text-slate-800 hover:text-paper">
+              <span>פרטי האתר · ציון {score} ({String(lead.grade || "—")})</span>
+              <span aria-hidden className="text-slate-400 transition-transform group-open:rotate-45">+</span>
+            </summary>
+            <div className="space-y-4 px-5 pb-5">
+              {couldNotAnalyze && (
+                <p className="text-sm text-amber-700">
+                  לא הצלחנו להגיע לאתר, אז ציון 0 לא אומר שהוא טוב. שווה לפתוח אותו ידנית.
+                </p>
+              )}
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
+                <dt className={dl}>שנת יצירה</dt>
+                <dd className={dd}>{firstYear > 0 ? `${firstYear} (${ageYears} שנים)` : "לא ידוע"}</dd>
+                <dt className={dl}>Copyright אחרון</dt>
+                <dd className={dd}>{lastCopyright || "לא נמצא"}</dd>
+                <dt className={dl}>HTTPS</dt>
+                <dd className={hasHttps === null ? dd : hasHttps ? "text-emerald-700" : "text-rose-700"}>
+                  {hasHttps === null ? "—" : hasHttps ? "מאובטח" : "לא מאובטח"}
+                </dd>
+                <dt className={dl}>מותאם למובייל</dt>
+                <dd className={isMobile === null ? dd : isMobile ? "text-emerald-700" : "text-rose-700"}>
+                  {isMobile === null ? "—" : isMobile ? "כן" : "לא"}
+                </dd>
+                <dt className={dl}>פלטפורמה</dt>
+                <dd className={dd}>{cms || "לא זוהתה"}</dd>
+                <dt className={dl}>זמן טעינה</dt>
+                <dd className={loadMs > 5000 ? "text-rose-700" : loadMs > 3000 ? "text-amber-700" : dd}>
+                  {loadMs > 0 ? `${(loadMs / 1000).toFixed(1)} שניות` : "—"}
+                </dd>
+                <dt className={dl}>גודל הדף</dt>
+                <dd className={dd}>{htmlKb > 0 ? `${htmlKb} KB` : "—"}</dd>
+              </dl>
+              {listBlock(`כל הבעיות שזוהו (${issues.length})`, issues)}
+              {url && (
+                <div className="overflow-hidden rounded-xl border border-line">
+                  <iframe src={url} className="h-[280px] w-full bg-paper" title="תצוגה מקדימה של האתר" />
+                </div>
+              )}
+              {leadError && <p className="text-xs text-slate-500" dir="ltr">{leadError}</p>}
+            </div>
+          </details>
+        )}
+
+        <details className="group border-b border-line last:border-b-0">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-sm text-slate-800 hover:text-paper">
+            <span>ניתוח AI</span>
+            <span aria-hidden className="text-slate-400 transition-transform group-open:rotate-45">+</span>
+          </summary>
+          <div className="space-y-4 px-5 pb-5">
+            <p className="text-sm leading-relaxed text-slate-800">{String(lead.ai_summary || "—")}</p>
+            {listBlock("בעיות מרכזיות", mainProblems.slice(0, 5))}
+            {listBlock("חוויית משתמש", ux)}
+            {listBlock("אמון", trust)}
+            {listBlock("המרה", conv)}
             <p className="text-sm text-slate-800">
-              <span className="text-slate-500">💡 </span>
-              {matchReason}
+              <span className="text-slate-500">נקודת שיחה: </span>
+              {String(lead.best_talking_point || "—")}
             </p>
-          )}
-        </section>
-      )}
+          </div>
+        </details>
 
-      {couldNotAnalyze && (
-        <section className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
-          <h2 className="font-bold text-amber-900 mb-2">⚠ לא הצלחנו לנתח את האתר</h2>
-          <p className="text-sm text-amber-900 mb-2">
-            ציון 0 כאן <strong>לא</strong> אומר שהאתר טוב — הוא אומר שלא הצלחנו להגיע אליו (timeout, חסום,
-            או שגיאת SSL). שווה לפתוח ידנית.
-          </p>
-          <p className="text-xs text-amber-800 font-mono">{leadError}</p>
-        </section>
-      )}
-
-      <section className="rounded-xl border bg-white p-4">
-        <h2 className="font-bold text-brand mb-3">פרטים טכניים על האתר</h2>
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-          <dt className="text-slate-500">שנת יצירת האתר</dt>
-          <dd className="font-medium">
-            {firstYear > 0 ? (
-              <>
-                {firstYear}{" "}
-                <span className="text-slate-500 text-xs">
-                  ({ageYears} שנים)
-                </span>
-              </>
-            ) : (
-              <span className="text-slate-400">לא ידוע</span>
-            )}
-          </dd>
-
-          <dt className="text-slate-500">Copyright אחרון</dt>
-          <dd className="font-medium">
-            {lastCopyright || <span className="text-slate-400">לא נמצא</span>}
-          </dd>
-
-          <dt className="text-slate-500">HTTPS</dt>
-          <dd className={`font-medium ${hasHttps ? "text-emerald-700" : "text-rose-700"}`}>
-            {hasHttps === null ? "—" : hasHttps ? "✓ מאובטח" : "✗ לא מאובטח"}
-          </dd>
-
-          <dt className="text-slate-500">מותאם למובייל</dt>
-          <dd className={`font-medium ${isMobile ? "text-emerald-700" : "text-rose-700"}`}>
-            {isMobile === null ? "—" : isMobile ? "✓ כן" : "✗ לא"}
-          </dd>
-
-          <dt className="text-slate-500">פלטפורמה (CMS)</dt>
-          <dd className="font-medium">{cms || <span className="text-slate-400">לא זוהה</span>}</dd>
-
-          <dt className="text-slate-500">זמן טעינה</dt>
-          <dd className="font-medium">
-            {loadMs > 0 ? (
-              <span className={loadMs > 5000 ? "text-rose-700" : loadMs > 3000 ? "text-amber-700" : "text-emerald-700"}>
-                {loadMs} ms
-              </span>
-            ) : (
-              <span className="text-slate-400">—</span>
-            )}
-          </dd>
-
-          <dt className="text-slate-500">גודל HTML</dt>
-          <dd className="font-medium">
-            {htmlKb > 0 ? `${htmlKb} KB` : <span className="text-slate-400">—</span>}
-          </dd>
-
-          <dt className="text-slate-500">ציון בעיות</dt>
-          <dd className="font-medium">
-            {score} ({String(lead.grade || "—")})
-          </dd>
-        </dl>
-
-        {issues.length > 0 && (
-          <>
-            <h3 className="text-sm font-semibold mt-4 mb-2">כל הבעיות שזוהו ({issues.length})</h3>
-            <ul className="list-disc list-inside text-sm space-y-1 text-slate-800">
-              {issues.map((x, i) => (
-                <li key={i}>{x}</li>
-              ))}
-            </ul>
-          </>
+        {Boolean(lead.call_prep) && (
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-sm text-slate-800 hover:text-paper">
+              <span>הכנה ישנה (טקסט)</span>
+              <span aria-hidden className="text-slate-400 transition-transform group-open:rotate-45">+</span>
+            </summary>
+            <pre className="whitespace-pre-wrap px-5 pb-5 font-sans text-xs leading-relaxed text-slate-700">{String(lead.call_prep)}</pre>
+          </details>
         )}
       </section>
 
-      <section className="rounded-xl border bg-white p-4">
-        <h2 className="font-bold text-brand mb-2">ניתוח AI</h2>
-        <p className="text-sm text-slate-800">{String(lead.ai_summary || "—")}</p>
-        <h3 className="text-sm font-semibold mt-3">בעיות מרכזיות</h3>
-        <ul className="list-disc list-inside text-sm space-y-1">
-          {mainProblems.slice(0, 5).map((x, i) => (
-            <li key={i}>{x}</li>
-          ))}
-        </ul>
-        <h3 className="text-sm font-semibold mt-2">UX</h3>
-        <ul className="list-disc list-inside text-sm">
-          {ux.map((x, i) => (
-            <li key={i}>{x}</li>
-          ))}
-        </ul>
-        <h3 className="text-sm font-semibold mt-2">אמון</h3>
-        <ul className="list-disc list-inside text-sm">
-          {trust.map((x, i) => (
-            <li key={i}>{x}</li>
-          ))}
-        </ul>
-        <h3 className="text-sm font-semibold mt-2">המרה</h3>
-        <ul className="list-disc list-inside text-sm">
-          {conv.map((x, i) => (
-            <li key={i}>{x}</li>
-          ))}
-        </ul>
-        <p className="text-sm mt-2">
-          <strong>נקודת שיחה:</strong> {String(lead.best_talking_point || "—")}
-        </p>
-        <p className="text-sm">
-          <strong>זווית:</strong> {String(lead.suggested_angle || "—")}
-        </p>
-      </section>
-
-      <section className="rounded-xl border bg-white p-4 space-y-3">
-        <h2 className="font-bold">ניהול ליד</h2>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => quick("start")}
-            className="rounded-lg bg-indigo-100 px-3 py-2 text-sm font-semibold text-indigo-800"
-          >
-            💬 בתהליך
-          </button>
-          <button
-            type="button"
-            onClick={() => quick("interested")}
-            className="rounded-lg bg-orange-200 px-3 py-2 text-sm font-semibold text-orange-900"
-          >
-            🔥 מתעניין
-          </button>
-          <button
-            type="button"
-            onClick={() => quick("not_interested")}
-            className="rounded-lg bg-slate-200 px-3 py-2 text-sm font-semibold"
-          >
-            ❌ לא מעוניין
-          </button>
-        </div>
-        <div>
-          <label className="text-sm font-medium">סטטוס</label>
-          <select
-            className="mt-1 w-full rounded-lg border px-3 py-2"
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-          >
-            <option value="new">🆕 חדש</option>
-            <option value="in_progress">💬 בתהליך</option>
-            <option value="interested">🔥 מתעניין</option>
-            <option value="follow_up">⏰ צריך לחזור</option>
-            <option value="not_interested">❌ לא מעוניין</option>
-            <option value="won">💰 נסגר</option>
-            <option value="lost">💔 לא נסגר</option>
-          </select>
-        </div>
-        <div>
-          <label className="text-sm font-medium">תאריך מעקב</label>
-          <input
-            type="date"
-            className="mt-1 w-full rounded-lg border px-3 py-2"
-            value={followUp}
-            onChange={(e) => setFollowUp(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="text-sm font-medium">הערות</label>
-          <textarea
-            className="mt-1 w-full rounded-lg border px-3 py-2 min-h-[100px]"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-        </div>
+      {/* הסרה */}
+      <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
         <button
-          type="button"
-          onClick={save}
-          className="w-full rounded-xl bg-brand py-3 font-bold text-white"
+          onClick={() => remove("lead")}
+          disabled={deleting}
+          className={`${btn.ghost} hover:!text-rose-700`}
+          title="הליד יוסר ולא יחזור בחיפושים הבאים"
         >
-          שמור
+          <Icon name="trash" size={16} />
+          {deleting ? "מסירה…" : "להסיר את הליד"}
         </button>
-        {toast && <p className="text-sm text-center text-emerald-700">{toast}</p>}
-      </section>
-
-      {Boolean(lead.call_prep) && (
-        <section className="rounded-xl border bg-slate-50 p-4">
-          <h2 className="font-bold mb-2">הכנה מלאה (טקסט)</h2>
-          <pre className="text-xs whitespace-pre-wrap font-sans">{String(lead.call_prep)}</pre>
-        </section>
-      )}
-
-      {/* Mobile-first action bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-slate-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 py-3">
-          {phone && telHref(phone) ? (
-            <a
-              href={telHref(phone)!}
-              className="flex-1 rounded-xl bg-emerald-600 py-3 text-center text-sm font-bold text-white"
-            >
-              חיוג
-            </a>
-          ) : (
-            <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 text-sm font-bold" disabled>
-              חיוג
-            </button>
-          )}
-          {waLink(phone, wa) ? (
-            <a
-              href={waLink(phone, wa)!}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 rounded-xl bg-green-500 py-3 text-center text-sm font-bold text-white"
-            >
-              WhatsApp
-            </a>
-          ) : (
-            <button type="button" className="flex-1 rounded-xl bg-slate-200 py-3 text-sm font-bold" disabled>
-              WhatsApp
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => copyText(opening)}
-            className="rounded-xl border border-slate-300 px-3 py-3 text-sm font-bold"
-          >
-            העתקה
-          </button>
-          <button
-            type="button"
-            onClick={save}
-            className="rounded-xl bg-brand px-4 py-3 text-sm font-bold text-white"
-          >
-            שמור
-          </button>
-        </div>
+        <button
+          onClick={() => remove("brand")}
+          disabled={deleting}
+          className={`${btn.ghost} hover:!text-rose-700`}
+          title="לרשתות כמו ארומה: מסיר את כל הסניפים, גם עתידיים"
+        >
+          להסיר את כל הרשת
+        </button>
       </div>
     </div>
   );

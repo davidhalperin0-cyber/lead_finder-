@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { Icon, PageHeader, Panel, Dot, Skeleton, STATUS_DOT, btn } from "../_components/ui";
 
 type Job = {
   id: string;
@@ -26,65 +27,6 @@ type Pipeline = Record<string, StageStat> & {
   _meta?: { deals_total: number };
 };
 
-function stageColor(key: string): string {
-  return ({
-    new: "#3b82f6",
-    in_progress: "#6366f1",
-    interested: "#f97316",
-    follow_up: "#f59e0b",
-    not_interested: "#64748b",
-    won: "#10b981",
-    lost: "#ef4444",
-  } as Record<string, string>)[key] || "#94a3b8";
-}
-
-function PipelinePie({
-  segments,
-}: {
-  segments: { label: string; value: number; color: string; emoji: string }[];
-}) {
-  const total = segments.reduce((s, x) => s + x.value, 0);
-  if (total === 0) {
-    return (
-      <div className="h-32 w-32 flex items-center justify-center rounded-full border-4 border-slate-200 text-slate-400 text-xs">
-        אין נתונים
-      </div>
-    );
-  }
-  const cx = 60;
-  const cy = 60;
-  const r = 50;
-  let acc = 0;
-  return (
-    <div className="relative h-32 w-32 shrink-0">
-      <svg viewBox="0 0 120 120" className="h-32 w-32 -rotate-90">
-        {segments.map((s) => {
-          if (s.value === 0) return null;
-          const frac = s.value / total;
-          const start = acc;
-          acc += frac;
-          const end = acc;
-          const a1 = start * Math.PI * 2;
-          const a2 = end * Math.PI * 2;
-          const x1 = cx + r * Math.cos(a1);
-          const y1 = cy + r * Math.sin(a1);
-          const x2 = cx + r * Math.cos(a2);
-          const y2 = cy + r * Math.sin(a2);
-          const large = end - start > 0.5 ? 1 : 0;
-          const path = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
-          return <path key={s.label} d={path} fill={s.color} />;
-        })}
-        {/* חור באמצע - donut */}
-        <circle cx={cx} cy={cy} r={28} fill="white" />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-        <span className="text-2xl font-bold text-slate-800 leading-none">{total}</span>
-        <span className="text-[10px] text-slate-500 mt-0.5">לידים</span>
-      </div>
-    </div>
-  );
-}
-
 const STAGES: Array<{
   key: string;
   href: string;
@@ -93,13 +35,13 @@ const STAGES: Array<{
   description: string;
   color: string;
 }> = [
-  { key: "new",            href: "/leads/new",            title: "לידים חדשים",       emoji: "🆕",  description: "טרם דיברתי איתם",          color: "from-blue-500 to-blue-600" },
-  { key: "in_progress",    href: "/leads/in-progress",    title: "בתהליך",            emoji: "💬",  description: "התחלתי לטפל",                color: "from-indigo-500 to-indigo-600" },
-  { key: "interested",     href: "/leads/interested",     title: "מתעניינים",         emoji: "🔥",  description: "הביעו עניין — סגירה!",        color: "from-orange-500 to-rose-500" },
-  { key: "follow_up",      href: "/leads/follow-up",      title: "צריך לחזור אליהם",  emoji: "⏰",  description: "תאריך חזרה נקבע",            color: "from-amber-500 to-amber-600" },
-  { key: "not_interested", href: "/leads/not-interested", title: "לא מעוניינים",      emoji: "❌",  description: "אמרו לא + סיבה",            color: "from-slate-500 to-slate-600" },
-  { key: "won",            href: "/leads/won",            title: "נסגרו ✓",            emoji: "💰",  description: "לקוחות שלי",                color: "from-emerald-500 to-emerald-600" },
-  { key: "lost",           href: "/leads/lost",           title: "לא נסגרו",          emoji: "💔",  description: "היה עניין, לא סגרנו",        color: "from-rose-500 to-rose-600" },
+  { key: "new",            href: "/leads/new",            title: "לידים חדשים",       emoji: "",  description: "טרם דיברתי איתם",          color: "from-blue-500 to-blue-600" },
+  { key: "in_progress",    href: "/leads/in-progress",    title: "בתהליך",            emoji: "",  description: "התחלתי לטפל",                color: "from-indigo-500 to-indigo-600" },
+  { key: "interested",     href: "/leads/interested",     title: "מתעניינים",         emoji: "",  description: "הביעו עניין — סגירה!",        color: "from-orange-500 to-rose-500" },
+  { key: "follow_up",      href: "/leads/follow-up",      title: "צריך לחזור אליהם",  emoji: "",  description: "תאריך חזרה נקבע",            color: "from-amber-500 to-amber-600" },
+  { key: "not_interested", href: "/leads/not-interested", title: "לא מעוניינים",      emoji: "",  description: "אמרו לא + סיבה",            color: "from-slate-500 to-slate-600" },
+  { key: "won",            href: "/leads/won",            title: "נסגרו",            emoji: "",  description: "לקוחות שלי",                color: "from-emerald-500 to-emerald-600" },
+  { key: "lost",           href: "/leads/lost",           title: "לא נסגרו",          emoji: "",  description: "היה עניין, לא סגרנו",        color: "from-rose-500 to-rose-600" },
 ];
 
 type DayActivity = { date: string; count: number; label: string };
@@ -245,15 +187,15 @@ export default function DashboardPage() {
       if (lastJobStatusRef.current === "running") {
         if (j.status === "completed") {
           if (j.saved_count > 0) {
-            setToast(`✓ סיימנו! נשמרו ${j.saved_count} לידים חדשים`);
+            setToast(`סיימנו: נשמרו ${j.saved_count} לידים חדשים`);
           } else {
-            setToast(`😕 לא נמצאו לידים. נסי עיר/קטגוריה אחרת`);
+            setToast(`לא נמצאו לידים. נסי עיר או קטגוריה אחרת`);
           }
           loadStats();
           setTimeout(() => setToast(null), 5500);
         } else if (j.status === "failed") {
           const errMsg = j.error_message || "לא נמצאו עסקים";
-          setToast(`❌ ${errMsg}`);
+          setToast(errMsg);
           setTimeout(() => setToast(null), 6000);
         }
       }
@@ -287,345 +229,217 @@ export default function DashboardPage() {
   const interested = stats?.interested?.total || 0;
   const inProgress = stats?.in_progress?.total || 0;
 
-  // pipeline funnel data
   const funnelData = [
-    { label: "חדשים", value: stats?.new?.total || 0, color: "#3b82f6" },
-    { label: "בתהליך", value: inProgress, color: "#6366f1" },
-    { label: "מתעניינים", value: interested, color: "#f97316" },
-    { label: "נסגרו", value: wonCount, color: "#10b981" },
+    { label: "חדשים", value: stats?.new?.total || 0 },
+    { label: "בתהליך", value: inProgress },
+    { label: "מתעניינים", value: interested },
+    { label: "נסגרו", value: wonCount },
   ];
   const funnelMax = Math.max(...funnelData.map((d) => d.value), 1);
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "בוקר טוב" : hour < 17 ? "צהריים טובים" : "ערב טוב";
+  const num = (v: number, w = "w-10") => (isLoadingFresh ? <Skeleton className={`h-8 ${w}`} /> : v.toLocaleString("he-IL"));
 
   return (
-    <div className="space-y-4 animate-fadeIn">
-      {/* כותרת + מטריקות עליונות */}
-      <div className="rounded-2xl bg-gradient-to-br from-brand-700 via-brand-600 to-brand-500 p-5 text-white shadow-soft relative overflow-hidden">
-        <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
-        <div className="absolute -left-4 -bottom-4 h-24 w-24 rounded-full bg-brand-accent/20 blur-2xl" />
-        <div className="relative">
-          <div className="flex items-center gap-2">
-            <span className="dot-live" />
-            <h1 className="text-xl font-bold">הלוח שלי</h1>
-          </div>
-          <p className="mt-1 text-sm opacity-90">המצב של כל הלידים בפייפליין</p>
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            <div className="rounded-xl bg-white/10 backdrop-blur p-3 border border-white/10">
-              <p className="text-xs opacity-80">סה&quot;כ נסגר</p>
-              <p className="text-lg font-bold">
-                {isLoadingFresh ? (
-                  <span className="inline-block h-5 w-16 rounded bg-white/20 animate-pulse" />
-                ) : (
-                  `₪${dealsTotal.toLocaleString()}`
-                )}
-              </p>
-            </div>
-            <div className="rounded-xl bg-white/10 backdrop-blur p-3 border border-white/10">
-              <p className="text-xs opacity-80">חדשים היום</p>
-              <p className="text-lg font-bold">
-                {isLoadingFresh ? (
-                  <span className="inline-block h-5 w-8 rounded bg-white/20 animate-pulse" />
-                ) : (
-                  newToday
-                )}
-              </p>
-              <span className="text-[10px] opacity-70">לידים</span>
-            </div>
-            <div className="rounded-xl bg-white/10 backdrop-blur p-3 border border-white/10">
-              <p className="text-xs opacity-80">מעקב היום</p>
-              <p className="text-lg font-bold">
-                {isLoadingFresh ? (
-                  <span className="inline-block h-5 w-8 rounded bg-white/20 animate-pulse" />
-                ) : (
-                  followDue
-                )}
-              </p>
-              <span className="text-[10px] opacity-70">שיחות</span>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div className="space-y-5 animate-fadeIn">
+      <PageHeader title={greeting} subtitle="מה מחכה לך היום" />
 
-      {/* קישורי-על: חמים + חיוג */}
-      <div className="grid grid-cols-2 gap-3">
-        <Link
-          href="/leads/hot"
-          className="card-elevated p-4 bg-gradient-to-br from-rose-500 to-orange-500 text-white border-0 shadow-hot btn-pop"
-        >
-          <p className="text-3xl">🔥</p>
-          <p className="mt-2 text-base font-bold">לידים חמים</p>
-          <p className="text-xs opacity-90">25 הכי שווים</p>
-        </Link>
-        <Link
-          href="/call-mode"
-          className="card-elevated p-4 bg-gradient-success text-white border-0 btn-pop"
-        >
-          <p className="text-3xl">📞</p>
-          <p className="mt-2 text-base font-bold">מצב חיוג</p>
-          <p className="text-xs opacity-90">חיוג רציף</p>
-        </Link>
-      </div>
-
-      {/* גרף משפך המרה */}
-      {totalLeads > 0 && (
-        <div className="card-elevated p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-bold text-slate-800">📊 משפך המרה</h3>
-            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
-              {conversionRate}% המרה
+      {/* היום: הפעולה הראשית */}
+      <Panel className="!p-0 overflow-hidden">
+        {followDue > 0 && (
+          <Link
+            href="/leads/follow-up"
+            className="flex items-center justify-between gap-3 border-b border-line bg-amber-50 px-5 py-3.5 text-sm text-amber-800 transition-colors hover:text-amber-900"
+          >
+            <span className="flex items-center gap-2.5">
+              <Icon name="clock" />
+              {followDue === 1 ? "ליד אחד מחכה לשיחה חוזרת היום" : `${followDue} לידים מחכים לשיחה חוזרת היום`}
             </span>
+            <Icon name="chevron" />
+          </Link>
+        )}
+        <div className="grid grid-cols-3 divide-x divide-x-reverse divide-line">
+          <div className="p-5">
+            <p className="text-xs text-slate-500">חדשים היום</p>
+            <p className="mt-1.5 text-[1.75rem] font-light tabular-nums text-paper">{num(newToday)}</p>
           </div>
-          <div className="space-y-2">
-            {funnelData.map((d) => {
-              const pct = (d.value / funnelMax) * 100;
-              return (
-                <div key={d.label} className="flex items-center gap-2">
-                  <span className="w-20 shrink-0 text-xs font-medium text-slate-700">
-                    {d.label}
-                  </span>
-                  <div className="flex-1 h-7 rounded-lg bg-slate-100 overflow-hidden relative">
-                    <div
-                      className="h-full rounded-lg transition-all duration-700"
-                      style={{
-                        width: `${Math.max(pct, d.value > 0 ? 4 : 0)}%`,
-                        background: `linear-gradient(90deg, ${d.color}, ${d.color}dd)`,
-                      }}
-                    />
-                    <span className="absolute inset-0 flex items-center px-2 text-xs font-bold text-slate-700">
-                      {d.value}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="p-5">
+            <p className="text-xs text-slate-500">שיחות חוזרות היום</p>
+            <p className="mt-1.5 text-[1.75rem] font-light tabular-nums text-paper">{num(followDue)}</p>
+          </div>
+          <div className="p-5">
+            <p className="text-xs text-slate-500">סה&quot;כ נסגר</p>
+            <p className="mt-1.5 text-[1.75rem] font-light tabular-nums text-paper">
+              {isLoadingFresh ? <Skeleton className="h-8 w-20" /> : `₪${dealsTotal.toLocaleString("he-IL")}`}
+            </p>
           </div>
         </div>
-      )}
-
-      {/* גרף עוגה - פילוח שלבים */}
-      {totalLeads > 0 && (
-        <div className="card-elevated p-4">
-          <h3 className="font-bold text-slate-800 mb-3">🥧 פילוח לידים פעילים</h3>
-          <div className="flex items-center gap-4">
-            <PipelinePie
-              segments={STAGES.filter((s) => s.key !== "won" && s.key !== "lost").map(
-                (s) => ({
-                  label: s.title,
-                  value: stats?.[s.key]?.total || 0,
-                  color: stageColor(s.key),
-                  emoji: s.emoji,
-                })
-              )}
-            />
-            <div className="flex-1 space-y-1.5 text-sm">
-              {STAGES.filter((s) => s.key !== "won" && s.key !== "lost").map((s) => {
-                const v = stats?.[s.key]?.total || 0;
-                if (v === 0) return null;
-                return (
-                  <div key={s.key} className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-1.5 text-xs text-slate-700">
-                      <span
-                        className="h-2.5 w-2.5 rounded-sm"
-                        style={{ background: stageColor(s.key) }}
-                      />
-                      {s.emoji} {s.title}
-                    </span>
-                    <span className="text-xs font-bold text-slate-900">{v}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+        <div className="flex flex-col gap-2 border-t border-line p-4 sm:flex-row">
+          <Link href="/call-mode" className={`${btn.primary} flex-1 py-3.5 text-[15px]`}>
+            <Icon name="phone" />
+            להתחיל לחייג
+          </Link>
+          <Link href="/leads/hot" className={`${btn.secondary} flex-1 py-3.5 text-[15px]`}>
+            <Icon name="flame" />
+            25 הלידים החמים
+          </Link>
         </div>
-      )}
+      </Panel>
 
-      {/* גרף פעילות 7 ימים */}
-      {activity.length > 0 && (
-        <div className="card-elevated p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-bold text-slate-800">📈 לידים שנוספו - שבוע אחרון</h3>
-            <span className="text-xs text-slate-500">
-              סה&quot;כ {activity.reduce((s, d) => s + d.count, 0)}
-            </span>
-          </div>
-          <div className="flex items-end justify-between gap-1 h-24">
-            {activity.map((d) => {
-              const max = Math.max(...activity.map((x) => x.count), 1);
-              const pct = (d.count / max) * 100;
-              const isToday = d.date === new Date().toISOString().slice(0, 10);
-              return (
-                <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
-                  <div className="text-[10px] font-bold text-slate-700 h-3">
-                    {d.count > 0 ? d.count : ""}
-                  </div>
-                  <div className="w-full flex-1 flex items-end">
-                    <div
-                      className={`w-full rounded-t-md transition-all duration-500 ${
-                        isToday
-                          ? "bg-gradient-to-t from-brand to-brand-500"
-                          : d.count > 0
-                          ? "bg-gradient-to-t from-blue-300 to-blue-200"
-                          : "bg-slate-100"
-                      }`}
-                      style={{ height: `${Math.max(pct, d.count > 0 ? 6 : 2)}%` }}
-                    />
-                  </div>
-                  <div className={`text-[10px] ${isToday ? "font-bold text-brand" : "text-slate-500"}`}>
-                    {d.label}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* באנר חיפוש פעיל - עם ספירה בזמן אמת */}
+      {/* חיפוש פעיל */}
       {activeJob && (
-        <div className="rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50 p-4 shadow-md animate-fadeIn">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="dot-live bg-amber-500" />
-                <p className="text-sm font-bold text-amber-900">חיפוש פעיל</p>
-              </div>
-              <p className="mt-1 text-xs text-amber-800">
-                {activeJob.business_type} ב{activeJob.city} · יעד {activeJob.limit_n} לידים
-              </p>
-            </div>
-            <span className="rounded-full bg-amber-200 px-3 py-1 text-xs font-bold text-amber-900">
-              {activeJob.status === "queued" ? "מתחיל..." : "מחפש..."}
+        <Panel
+          title="חיפוש פעיל"
+          aside={
+            <span className="chip">
+              <span className="dot-live !bg-amber-500" />
+              {activeJob.status === "queued" ? "מתחיל" : "מחפש"}
             </span>
+          }
+        >
+          <p className="-mt-2 text-sm text-slate-600">
+            {activeJob.business_type} ב{activeJob.city} · יעד {activeJob.limit_n} לידים
+          </p>
+          <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+            {[
+              ["נמצאו", activeJob.found_count || 0],
+              ["נותחו", activeJob.analyzed_count || activeJob.progress_current || 0],
+              ["נשמרו", activeJob.saved_count || 0],
+            ].map(([label, v]) => (
+              <div key={label as string} className="rounded-xl bg-slate-50 py-3">
+                <div className="text-2xl font-light tabular-nums text-paper">{v}</div>
+                <div className="text-xs text-slate-500">{label}</div>
+              </div>
+            ))}
           </div>
-
-          {/* 3 מדדים: נמצאו / נותחו / נשמרו */}
-          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-lg bg-white/70 backdrop-blur p-2">
-              <div className="text-2xl font-extrabold text-blue-700 tabular-nums">
-                {activeJob.found_count || 0}
-              </div>
-              <div className="text-[10px] text-blue-700 font-semibold">🔍 נמצאו</div>
-            </div>
-            <div className="rounded-lg bg-white/70 backdrop-blur p-2">
-              <div className="text-2xl font-extrabold text-purple-700 tabular-nums">
-                {activeJob.analyzed_count || activeJob.progress_current || 0}
-              </div>
-              <div className="text-[10px] text-purple-700 font-semibold">🧠 נותחו</div>
-            </div>
-            <div className="rounded-lg bg-white/70 backdrop-blur p-2">
-              <div className="text-2xl font-extrabold text-emerald-700 tabular-nums">
-                {activeJob.saved_count || 0}
-              </div>
-              <div className="text-[10px] text-emerald-700 font-semibold">💾 נשמרו</div>
-            </div>
-          </div>
-
-          {/* פס התקדמות */}
-          <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-amber-200">
+          <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all duration-500"
+              className="h-full rounded-full transition-all duration-500"
               style={{
+                background: "var(--pearl)",
                 width: activeJob.progress_total
                   ? `${Math.min(100, (activeJob.progress_current / activeJob.progress_total) * 100)}%`
                   : "8%",
               }}
             />
           </div>
-          <p className="mt-1 text-[10px] text-amber-700 text-center">
-            {activeJob.progress_total
-              ? `${activeJob.progress_current} מתוך ${activeJob.progress_total}`
-              : "בודקת מקורות..."}
+          <p className="mt-2 text-center text-xs text-slate-500">
+            {activeJob.progress_total ? `${activeJob.progress_current} מתוך ${activeJob.progress_total}` : "בודקת מקורות…"}
           </p>
-        </div>
+        </Panel>
       )}
 
-      {/* באנר תוצאת חיפוש אחרון - הצלחה או "לא נמצא" */}
       {recentJob && recentJob.status === "completed" && recentJob.saved_count === 0 && (
-        <div className="rounded-2xl border-2 border-rose-200 bg-gradient-to-br from-rose-50 to-amber-50 p-4 animate-fadeIn">
-          <p className="text-base font-bold text-rose-900">😕 לא נמצאו לידים</p>
-          <p className="mt-1 text-sm text-rose-800">
-            לחיפוש &quot;{recentJob.business_type}&quot; ב&quot;{recentJob.city}&quot; לא נמצאו עסקים מתאימים.
+        <Panel title="לא נמצאו לידים">
+          <p className="-mt-2 text-sm text-slate-700">
+            לחיפוש &quot;{recentJob.business_type}&quot; ב&quot;{recentJob.city}&quot; לא נמצאו עסקים מתאימים. כדאי לנסות עיר גדולה יותר או קטגוריה אחרת.
           </p>
-          <div className="mt-3 text-xs text-rose-700 space-y-1">
-            <p>💡 הצעות:</p>
-            <p>• נסי עיר גדולה יותר (תל אביב, חיפה, ירושלים)</p>
-            <p>• נסי קטגוריה אחרת (מסעדה, מספרה, רופא שיניים)</p>
-            <p>• בדקי איות העיר באנגלית/עברית</p>
-          </div>
-          <Link
-            href="/search"
-            className="mt-3 inline-block rounded-lg bg-rose-600 px-4 py-2 text-sm font-bold text-white"
-          >
-            🔍 חיפוש חדש
+          <Link href="/search" className={`${btn.secondary} mt-4`}>
+            <Icon name="search" />
+            חיפוש חדש
           </Link>
-        </div>
+        </Panel>
       )}
 
-      {/* תוצאה כושלת */}
       {recentJob && recentJob.status === "failed" && (
-        <div className="rounded-2xl border-2 border-rose-300 bg-rose-50 p-4 animate-fadeIn">
-          <p className="text-base font-bold text-rose-900">❌ החיפוש נכשל</p>
-          <p className="mt-1 text-sm text-rose-800">
-            {recentJob.error_message || "לא נמצאו עסקים. נסי עיר/קטגוריה אחרת."}
-          </p>
-          <Link
-            href="/search"
-            className="mt-3 inline-block rounded-lg bg-rose-600 px-4 py-2 text-sm font-bold text-white"
-          >
-            🔍 נסי שוב
+        <Panel title="החיפוש נכשל">
+          <p className="-mt-2 text-sm text-rose-700">{recentJob.error_message || "לא נמצאו עסקים. נסי עיר או קטגוריה אחרת."}</p>
+          <Link href="/search" className={`${btn.secondary} mt-4`}>
+            <Icon name="refresh" />
+            לנסות שוב
+          </Link>
+        </Panel>
+      )}
+
+      {/* כל השלבים: רשימה אחת שקל לסרוק */}
+      <Panel className="!px-0 !pb-1 !pt-3">
+        <div className="mb-2 flex items-center justify-between gap-3 px-5">
+          <h2 className="text-[15px] font-medium text-paper">הלידים שלך</h2>
+          <Link href="/search" className={`${btn.ghost} -ml-2`}>
+            <Icon name="plus" size={16} />
+            חיפוש לידים
           </Link>
         </div>
-      )}
+        <ul className="-mt-1">
+          {STAGES.map((s) => {
+            const stat = stats?.[s.key] || { total: 0, today: 0 };
+            return (
+              <li key={s.key}>
+                <Link
+                  href={s.href}
+                  className="flex items-center gap-3.5 border-t border-line px-5 py-3.5 transition-colors hover:bg-slate-50"
+                >
+                  <Dot color={STATUS_DOT[s.key]} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[15px] text-paper">{s.title}</span>
+                    <span className="block text-xs text-slate-500">{s.description}</span>
+                  </span>
+                  {stat.today > 0 && <span className="chip !text-emerald-700">+{stat.today} היום</span>}
+                  <span className="w-12 text-left text-lg font-light tabular-nums text-paper">
+                    {isLoadingFresh ? <Skeleton className="mr-auto h-6 w-8" /> : stat.total}
+                  </span>
+                  <Icon name="chevron" size={16} className="text-slate-400" />
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </Panel>
 
-      {/* קריאה לפעולה: היום יש לידים למעקב */}
-      {followDue > 0 && (
-        <Link
-          href="/leads/follow-up"
-          className="block rounded-xl border-2 border-amber-400 bg-gradient-to-r from-amber-50 to-orange-50 p-4 active:opacity-90"
-        >
-          <p className="text-base font-bold text-amber-900">⏰ {followDue} לידים מחכים לחזרה היום</p>
-          <p className="mt-1 text-xs text-amber-800">לחץ כאן כדי להתחיל להחזיר שיחות</p>
-        </Link>
-      )}
-
-      {/* כרטיסי שלבים */}
-      <div className="grid grid-cols-2 gap-3">
-        {STAGES.map((s, i) => {
-          const stat = stats?.[s.key] || { total: 0, today: 0 };
-          return (
-            <Link
-              key={s.key}
-              href={s.href}
-              className={`block rounded-2xl bg-gradient-to-br ${s.color} p-4 text-white shadow-md btn-pop animate-slideUp relative overflow-hidden`}
-              style={{ animationDelay: `${i * 40}ms` }}
-            >
-              <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-white/10 blur-xl" />
-              <div className="relative">
-                <div className="flex items-start justify-between">
-                  <span className="text-2xl">{s.emoji}</span>
-                  {stat.today > 0 && (
-                    <span className="rounded-full bg-white/30 backdrop-blur px-2 py-0.5 text-[10px] font-bold">
-                      +{stat.today} היום
-                    </span>
-                  )}
+      {totalLeads > 0 && (
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Panel title="משפך" aside={<span className="chip">{conversionRate}% המרה</span>}>
+            <div className="space-y-3">
+              {funnelData.map((d, i) => (
+                <div key={d.label}>
+                  <div className="mb-1 flex justify-between text-xs">
+                    <span className="text-slate-700">{d.label}</span>
+                    <span className="tabular-nums text-slate-600">{d.value}</span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-full rounded-full transition-all duration-700"
+                      style={{
+                        width: `${Math.max((d.value / funnelMax) * 100, d.value > 0 ? 3 : 0)}%`,
+                        background: i === funnelData.length - 1 ? "var(--pearl)" : `rgba(75,91,176,${0.7 - i * 0.15})`,
+                      }}
+                    />
+                  </div>
                 </div>
-                <p className="mt-3 text-3xl font-extrabold leading-none">{stat.total}</p>
-                <p className="mt-2 text-sm font-semibold">{s.title}</p>
-                <p className="text-[11px] opacity-80">{s.description}</p>
-              </div>
-            </Link>
-          );
-        })}
+              ))}
+            </div>
+          </Panel>
 
-        {/* כרטיס חיפוש חדש */}
-        <Link
-          href="/search"
-          className="col-span-2 block rounded-2xl border-2 border-dashed border-brand/30 bg-white p-5 text-center text-slate-700 hover:border-brand hover:bg-brand-50 transition btn-pop"
-        >
-          <p className="text-2xl">➕</p>
-          <p className="mt-1 text-base font-bold text-brand">חיפוש לידים חדש</p>
-          <p className="text-xs text-slate-500">להוסיף עוד לידים לפייפליין</p>
-        </Link>
-      </div>
+          {activity.length > 0 && (
+            <Panel
+              title="לידים שנוספו השבוע"
+              aside={<span className="text-xs tabular-nums text-slate-500">{activity.reduce((s, d) => s + d.count, 0)}</span>}
+            >
+              <div className="flex h-28 items-end justify-between gap-2">
+                {activity.map((d) => {
+                  const max = Math.max(...activity.map((x) => x.count), 1);
+                  const isToday = d.date === new Date().toISOString().slice(0, 10);
+                  return (
+                    <div key={d.date} className="flex h-full flex-1 flex-col items-center gap-1.5">
+                      <span className="h-3 text-[10px] tabular-nums text-slate-500">{d.count > 0 ? d.count : ""}</span>
+                      <div className="flex w-full flex-1 items-end">
+                        <div
+                          className="w-full rounded-md transition-all duration-500"
+                          style={{
+                            height: `${Math.max((d.count / max) * 100, d.count > 0 ? 6 : 3)}%`,
+                            background: isToday ? "var(--pearl)" : d.count > 0 ? "rgba(75,91,176,0.25)" : "rgba(17,17,20,0.06)",
+                          }}
+                        />
+                      </div>
+                      <span className={`text-[11px] ${isToday ? "text-paper" : "text-slate-500"}`}>{d.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </Panel>
+          )}
+        </div>
+      )}
 
       {recentJob && recentJob.status === "completed" && recentJob.saved_count > 0 && (
         <p className="text-center text-xs text-slate-500">
@@ -633,12 +447,8 @@ export default function DashboardPage() {
         </p>
       )}
 
-      {loading && !stats && (
-        <p className="text-center text-sm text-slate-500">טוען…</p>
-      )}
-
       {toast && (
-        <div className="fixed bottom-24 left-1/2 z-40 -translate-x-1/2 rounded-full bg-emerald-700 px-4 py-2 text-sm font-bold text-white shadow-lg">
+        <div role="status" className="fixed bottom-28 left-1/2 z-40 -translate-x-1/2 rounded-full border border-line bg-white px-5 py-2.5 text-sm text-paper shadow-xl md:bottom-8">
           {toast}
         </div>
       )}

@@ -105,12 +105,12 @@ export default function NewLeadsPage() {
 
   return (
     <div className="space-y-3 pb-4">
-      <header className="flex items-end justify-between gap-2">
+      <header className="mb-3 flex items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold">🆕 לידים חדשים</h1>
-          <p className="text-xs text-slate-500">לידים שעדיין לא דיברתי איתם</p>
+          <h1 className="text-[2rem] font-light leading-tight tracking-tight text-paper sm:text-[2.5rem]">לידים חדשים</h1>
+          <p className="mt-1 text-[15px] text-slate-600">לידים שעדיין לא דיברתי איתם</p>
         </div>
-        <span className="rounded bg-blue-100 px-2 py-0.5 text-sm font-bold text-blue-700">
+        <span className="chip tabular-nums">
           {hasFilters ? `${filteredLeads.length}/${leads.length}` : leads.length}
         </span>
       </header>
@@ -123,22 +123,22 @@ export default function NewLeadsPage() {
 
       {/* פילטרים */}
       {leads.length > 0 && (
-        <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+        <div className="space-y-2 rounded-[1.25rem] border border-line bg-white p-3">
           {/* תיבת חיפוש */}
           <input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="🔍 חיפוש לפי שם, טלפון, עיר..."
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            placeholder="חיפוש לפי שם, טלפון, עיר..."
+            className="w-full rounded-xl border border-line px-3 py-2 text-sm"
           />
 
           {/* כפתורי בחירה: עם/בלי אתר */}
           <div className="flex gap-2">
             {([
               { v: "all" as WebsiteFilter, l: "הכל" },
-              { v: "no_website" as WebsiteFilter, l: "🔥 בלי אתר" },
-              { v: "with_website" as WebsiteFilter, l: "🌐 עם אתר" },
+              { v: "no_website" as WebsiteFilter, l: "בלי אתר" },
+              { v: "with_website" as WebsiteFilter, l: "עם אתר" },
             ]).map((b) => (
               <button
                 key={b.v}
@@ -146,8 +146,8 @@ export default function NewLeadsPage() {
                 onClick={() => setWebsiteFilter(b.v)}
                 className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold ${
                   websiteFilter === b.v
-                    ? "bg-brand text-white"
-                    : "bg-slate-100 text-slate-700"
+                    ? "bg-paper text-ink"
+                    : "border border-line text-slate-600 hover:text-paper"
                 }`}
               >
                 {b.l}
@@ -161,7 +161,7 @@ export default function NewLeadsPage() {
               <select
                 value={businessType}
                 onChange={(e) => setBusinessType(e.target.value)}
-                className="flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-xs"
+                className="flex-1 rounded-xl border border-line px-2 py-1.5 text-xs"
               >
                 <option value="all">כל סוגי העסקים</option>
                 {businessTypes.map((t) => (
@@ -173,7 +173,7 @@ export default function NewLeadsPage() {
               <select
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                className="flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-xs"
+                className="flex-1 rounded-xl border border-line px-2 py-1.5 text-xs"
               >
                 <option value="all">כל הערים</option>
                 {cities.map((c) => (
@@ -187,9 +187,9 @@ export default function NewLeadsPage() {
             <button
               type="button"
               onClick={clearFilters}
-              className="w-full rounded-lg bg-slate-100 py-1.5 text-xs font-semibold text-slate-700"
+              className="w-full rounded-full border border-line py-2 text-xs text-slate-600 hover:text-paper"
             >
-              ✕ ניקוי סינון
+              ניקוי סינון
             </button>
           )}
         </div>
@@ -198,14 +198,14 @@ export default function NewLeadsPage() {
       {loading && <p className="text-sm text-slate-500">טוען…</p>}
 
       {!loading && leads.length === 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
-          <p className="text-base font-bold text-slate-800">אין לידים חדשים 🎉</p>
+        <div className="rounded-[1.25rem] border border-line bg-white p-6 text-center">
+          <p className="text-base font-bold text-slate-800">אין לידים חדשים </p>
           <p className="mt-1 text-sm text-slate-500">
             כל הלידים כבר בטיפול. רוצה להוסיף עוד?
           </p>
           <Link
             href="/search"
-            className="mt-4 inline-block rounded-xl bg-brand px-5 py-2 text-sm font-bold text-white"
+            className="mt-4 inline-block btn-pearl px-5 py-2 text-sm"
           >
             חיפוש חדש
           </Link>
@@ -213,12 +213,12 @@ export default function NewLeadsPage() {
       )}
 
       {!loading && leads.length > 0 && filteredLeads.length === 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
+        <div className="rounded-[1.25rem] border border-line bg-white p-6 text-center">
           <p className="text-sm text-slate-500">לא נמצאו לידים שעונים לסינון.</p>
           <button
             type="button"
             onClick={clearFilters}
-            className="mt-3 inline-block rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700"
+            className="mt-3 inline-block rounded-full border border-line px-4 py-2 text-sm text-slate-700 hover:text-paper"
           >
             ניקוי סינון
           </button>

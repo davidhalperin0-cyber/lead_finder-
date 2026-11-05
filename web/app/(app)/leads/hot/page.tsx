@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { quickStatus, logActivity } from "../../_components/useLeads";
 import { TrustBadgeSmall } from "../../_components/TrustBadge";
+import { Icon, PageHeader, Skeleton, btn } from "../../_components/ui";
 
 type Lead = Record<string, unknown> & { id: string };
 
@@ -31,11 +32,11 @@ function hotScore(L: Record<string, unknown>): number {
   return match * 0.45 + opp * 0.35 + recencyBonus * 0.1 + noSite + close * 0.1 + statusPenalty;
 }
 
-function flameLevel(score: number): { emoji: string; label: string; color: string } {
-  if (score >= 80) return { emoji: "🔥🔥🔥", label: "לוהט", color: "from-rose-500 to-orange-500" };
-  if (score >= 60) return { emoji: "🔥🔥", label: "חם", color: "from-orange-500 to-amber-500" };
-  if (score >= 40) return { emoji: "🔥", label: "פושר", color: "from-amber-500 to-yellow-500" };
-  return { emoji: "💨", label: "צונן", color: "from-slate-400 to-slate-500" };
+function heat(score: number): { label: string; color: string } {
+  if (score >= 80) return { label: "לוהט", color: "#e11d48" };
+  if (score >= 60) return { label: "חם", color: "#ea580c" };
+  if (score >= 40) return { label: "פושר", color: "#ca8a04" };
+  return { label: "צונן", color: "#71717a" };
 }
 
 function telHref(phone: string): string | null {
@@ -116,167 +117,89 @@ export default function HotLeadsPage() {
     }
   }
 
-  return (
-    <div className="space-y-4 pb-6 animate-fadeIn">
-      {/* כותרת */}
-      <header className="rounded-2xl bg-gradient-to-br from-rose-500 via-orange-500 to-amber-500 p-5 text-white shadow-hot">
-        <div className="flex items-center gap-3">
-          <span className="text-4xl animate-float">🔥</span>
-          <div>
-            <h1 className="text-2xl font-bold">לידים חמים</h1>
-            <p className="text-sm opacity-90">25 הלידים השווים ביותר — מסודרים אוטומטית</p>
-          </div>
-        </div>
-        <div className="mt-4 flex gap-2">
-          <Link
-            href="/call-mode"
-            className="flex-1 rounded-xl bg-white/20 hover:bg-white/30 px-4 py-2.5 text-center text-sm font-bold backdrop-blur btn-pop"
-          >
-            📞 התחל מצב חיוג
-          </Link>
-          <button
-            onClick={load}
-            className="rounded-xl bg-white/20 hover:bg-white/30 px-4 py-2.5 text-sm font-bold backdrop-blur btn-pop"
-          >
-            🔄
-          </button>
-        </div>
-      </header>
+  const outcome = "rounded-full border border-line px-3 py-2 text-xs transition-colors disabled:opacity-40";
 
-      {loading && <p className="text-sm text-slate-500 text-center">טוען…</p>}
+  return (
+    <div className="pb-6 animate-fadeIn">
+      <PageHeader title="לידים חמים" subtitle="25 הלידים עם הסיכוי הכי גבוה, מסודרים לפי חום">
+        <button type="button" onClick={load} className={btn.ghost} aria-label="רענון הרשימה">
+          <Icon name="refresh" />
+        </button>
+        <Link href="/call-mode" className={btn.primary}>
+          <Icon name="phone" />
+          מצב חיוג
+        </Link>
+      </PageHeader>
+
+      {loading && (
+        <div className="space-y-3">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-40 rounded-[1.25rem]" />
+          ))}
+        </div>
+      )}
 
       {!loading && ranked.length === 0 && (
-        <div className="card-elevated p-8 text-center">
-          <p className="text-3xl mb-2">😴</p>
-          <p className="font-bold text-slate-800">אין לידים פתוחים</p>
-          <p className="text-sm text-slate-500 mt-1">צריך לחפש כמה!</p>
-          <Link
-            href="/search"
-            className="mt-4 inline-block rounded-xl bg-gradient-brand text-white px-5 py-2 text-sm font-bold btn-pop"
-          >
-            חיפוש חדש
+        <div className="rounded-[1.25rem] border border-line bg-white p-10 text-center">
+          <p className="text-lg font-light text-paper">אין כרגע לידים פתוחים</p>
+          <p className="mt-1 text-sm text-slate-600">חיפוש חדש יוסיף לידים לרשימה הזאת.</p>
+          <Link href="/search" className={`${btn.primary} mt-5`}>
+            <Icon name="search" />
+            חיפוש לידים
           </Link>
         </div>
       )}
 
       <ol className="space-y-3">
         {ranked.map((L, idx) => {
-          const score = Number(L._hot || 0);
-          const flame = flameLevel(score);
-          const phone = String(L.phone || "");
-          const tel = telHref(phone);
-          const status = String(L.status || "new");
+          const h = heat(Number(L._hot || 0));
+          const tel = telHref(String(L.phone || ""));
           const noSite = Boolean(L.no_website);
+          const angle = String(L.strongest_problem || "");
           return (
-            <li
-              key={L.id}
-              className="animate-slideUp"
-              style={{ animationDelay: `${idx * 30}ms` }}
-            >
-              <div className="card-elevated overflow-hidden">
-                {/* פס צבעוני עליון לפי דרגה */}
-                <div className={`h-1.5 bg-gradient-to-r ${flame.color}`} />
-                <div className="p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <Link
-                        href={`/leads/${L.id}`}
-                        className="block font-bold text-slate-900 hover:text-brand transition truncate"
-                      >
-                        <span className="text-slate-400 ml-1">#{idx + 1}</span>
-                        {String(L.business_name || "ללא שם")}
-                      </Link>
-                      <p className="mt-0.5 text-xs text-slate-500 truncate">
-                        {String(L.search_city || "")}{" "}
-                        {L.search_business_type ? "· " + L.search_business_type : ""}
-                      </p>
-                      <div className="mt-1">
-                        <TrustBadgeSmall lead={L} />
-                      </div>
-                    </div>
-                    <div className="shrink-0 flex flex-col items-end gap-1">
-                      <span
-                        className={`rounded-full bg-gradient-to-r ${flame.color} px-2.5 py-0.5 text-xs font-bold text-white`}
-                      >
-                        {flame.emoji} {flame.label}
-                      </span>
-                      {noSite && (
-                        <span className="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
-                          🔥 בלי אתר
-                        </span>
-                      )}
-                    </div>
+            <li key={L.id} className="rounded-[1.25rem] border border-line bg-white p-5 shadow-soft">
+              <div className="flex items-start gap-4">
+                <span className="w-6 pt-1 text-sm tabular-nums text-slate-400">{idx + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <Link href={`/leads/${L.id}`} className="truncate text-[17px] font-medium text-paper hover:underline">
+                      {String(L.business_name || "ללא שם")}
+                    </Link>
+                    <span className="flex items-center gap-1.5 text-xs" style={{ color: h.color }}>
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: h.color }} />
+                      {h.label}
+                    </span>
+                    {noSite && <span className="chip">בלי אתר</span>}
                   </div>
-
-                  {/* פס מטריקות */}
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-lg bg-blue-50 py-1.5">
-                      <div className="text-xs text-blue-700">התאמה</div>
-                      <div className="text-sm font-bold text-blue-900">
-                        {Number(L.match_score || 0)}%
-                      </div>
-                    </div>
-                    <div className="rounded-lg bg-purple-50 py-1.5">
-                      <div className="text-xs text-purple-700">הזדמנות</div>
-                      <div className="text-sm font-bold text-purple-900">
-                        {Number(L.opportunity_score || 0)}%
-                      </div>
-                    </div>
-                    <div className="rounded-lg bg-emerald-50 py-1.5">
-                      <div className="text-xs text-emerald-700">סגירה</div>
-                      <div className="text-sm font-bold text-emerald-900">
-                        {Number(L.close_probability || 0)}%
-                      </div>
-                    </div>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {[L.search_city, L.search_business_type].filter(Boolean).map(String).join(" · ")}
+                  </p>
+                  <div className="mt-2">
+                    <TrustBadgeSmall lead={L} />
                   </div>
+                  <p className="mt-3 text-xs tabular-nums text-slate-600">
+                    התאמה {Number(L.match_score || 0)}% · הזדמנות {Number(L.opportunity_score || 0)}% · סיכוי סגירה{" "}
+                    {Number(L.close_probability || 0)}%
+                  </p>
+                  {angle && <p className="mt-3 line-clamp-2 text-[15px] leading-relaxed text-slate-800">{angle}</p>}
 
-                  {String(L.strongest_problem || "") && (
-                    <p className="mt-3 text-sm text-slate-700 line-clamp-2 bg-slate-50 rounded-lg px-3 py-2">
-                      <span className="font-semibold text-slate-600">הזווית: </span>
-                      {String(L.strongest_problem)}
-                    </p>
-                  )}
-
-                  {/* פעולות */}
-                  <div className="mt-3 space-y-2">
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
                     {tel && (
-                      <a
-                        href={tel}
-                        className="block rounded-xl bg-gradient-success py-3 text-center text-base font-bold text-white btn-pop shadow-md"
-                      >
-                        📞 חיוג
+                      <a href={tel} className={`${btn.primary} min-w-[8rem]`}>
+                        <Icon name="phone" size={16} />
+                        חיוג
                       </a>
                     )}
-                    {/* כפתורי תוצאת השיחה - אחרי החיוג */}
-                    <div className="grid grid-cols-3 gap-1.5">
-                      <button
-                        onClick={() => markInterested(L.id)}
-                        disabled={busy === L.id}
-                        className="rounded-lg bg-emerald-100 hover:bg-emerald-200 py-2 text-xs font-bold text-emerald-800 btn-pop disabled:opacity-50"
-                      >
-                        ✅ מעוניין
-                      </button>
-                      <button
-                        onClick={() => markNoAnswer(L.id)}
-                        disabled={busy === L.id}
-                        className="rounded-lg bg-amber-100 hover:bg-amber-200 py-2 text-xs font-bold text-amber-800 btn-pop disabled:opacity-50"
-                      >
-                        📵 לא ענה
-                      </button>
-                      <button
-                        onClick={() => markNotInterested(L.id)}
-                        disabled={busy === L.id}
-                        className="rounded-lg bg-rose-100 hover:bg-rose-200 py-2 text-xs font-bold text-rose-800 btn-pop disabled:opacity-50"
-                      >
-                        ❌ לא מעוניין
-                      </button>
-                    </div>
-                    <Link
-                      href={`/leads/${L.id}`}
-                      className="block rounded-xl border border-slate-200 py-2 text-center text-xs font-medium text-slate-600"
-                    >
-                      פתיחת פרטים מלאים
-                    </Link>
+                    <span className="mx-1 hidden text-xs text-slate-400 sm:inline">אחרי השיחה:</span>
+                    <button onClick={() => markInterested(L.id)} disabled={busy === L.id} className={`${outcome} text-emerald-700 hover:border-emerald-300`}>
+                      מעוניין
+                    </button>
+                    <button onClick={() => markNoAnswer(L.id)} disabled={busy === L.id} className={`${outcome} text-slate-700 hover:border-slate-400`}>
+                      לא ענה
+                    </button>
+                    <button onClick={() => markNotInterested(L.id)} disabled={busy === L.id} className={`${outcome} text-rose-700 hover:border-rose-300`}>
+                      לא מעוניין
+                    </button>
                   </div>
                 </div>
               </div>

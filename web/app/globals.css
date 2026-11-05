@@ -4,27 +4,71 @@
 
 :root {
   direction: rtl;
-  --brand: 31 78 120;       /* #1f4e78 */
-  --brand-2: 45 106 159;    /* #2d6a9f */
-  --brand-accent: 255 192 0; /* #ffc000 */
-  --hot: 239 68 68;         /* rose-500 */
-  --hot-2: 234 88 12;       /* orange-600 */
+  color-scheme: light;
+  --bg: #f6f6f3;
+  --surface: #ffffff;
+  --line: rgba(17, 17, 20, 0.08);
+  --line-strong: rgba(17, 17, 20, 0.14);
+  --text: #111114;
+  --muted: #6b6b73;
+  --pearl: linear-gradient(120deg, #d6dcff 0%, #f0dbe8 50%, #f8d6bf 100%);
 }
 
 html {
   direction: rtl;
+  scroll-behavior: smooth;
 }
 
 body {
-  @apply bg-gradient-to-br from-slate-50 to-blue-50/40 text-slate-900 antialiased;
-  background-attachment: fixed;
-  font-feature-settings: "ss01", "cv11";
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Smooth scrolling for the app */
-html {
-  scroll-behavior: smooth;
+/* ערפל עדין בראש הדף, כמו ה-hero של הרפרנס */
+.app-glow {
+  background:
+    radial-gradient(60rem 28rem at 50% -12rem, rgba(196, 204, 255, 0.35), transparent 70%),
+    radial-gradient(40rem 20rem at 85% -8rem, rgba(248, 214, 191, 0.25), transparent 70%);
 }
+
+::selection { background: rgba(91, 107, 194, 0.18); }
+
+/* שדות טופס: משטח כהה, מסגרת דקה, פוקוס פנינתי */
+input, textarea, select {
+  background-color: var(--surface);
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+input::placeholder, textarea::placeholder { color: #9a9aa2; }
+:focus-visible { outline: 2px solid #5b6bc2; outline-offset: 2px; }
+input:focus, textarea:focus, select:focus { outline: none; border-color: #5b6bc2; box-shadow: 0 0 0 3px rgba(91, 107, 194, 0.15); }
+
+/* כותרות דקות עם מעבר לבן-אפור, כמו ברפרנס (רק טקסט, בלי אימוג'י) */
+.title-fade {
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  background: linear-gradient(122deg, #111114 0%, #111114 30%, #6b6b73 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* תגית קטנה עגולה */
+.chip {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  border: 1px solid var(--line-strong); background: #fff;
+  border-radius: 999px; padding: 0.2rem 0.7rem; font-size: 0.75rem; color: var(--muted);
+}
+
+/* כפתור פנינתי */
+.btn-pearl {
+  background: var(--pearl); color: #111114; border-radius: 999px; font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(17, 17, 20, 0.06), 0 1px 2px rgba(17, 17, 20, 0.06);
+  transition: transform 0.15s, filter 0.15s;
+}
+.btn-pearl:hover { filter: brightness(1.05); transform: translateY(-1px); }
+.btn-pearl:active { transform: scale(0.98); }
 
 /* === אנימציות גלובליות === */
 @keyframes fadeIn {
@@ -32,8 +76,8 @@ html {
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes pulseGlow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-  50% { box-shadow: 0 0 0 14px rgba(239, 68, 68, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(236, 111, 134, 0.45); }
+  50% { box-shadow: 0 0 0 14px rgba(236, 111, 134, 0); }
 }
 @keyframes shine {
   0% { background-position: -200% center; }
@@ -59,12 +103,7 @@ html {
 .animate-float { animation: float 3s ease-in-out infinite; }
 
 .shine-text {
-  background-image: linear-gradient(
-    110deg,
-    #1f4e78 35%,
-    #ffc000 50%,
-    #1f4e78 65%
-  );
+  background-image: linear-gradient(110deg, #4b5bb0 35%, #e8996b 50%, #4b5bb0 65%);
   background-size: 200% auto;
   background-clip: text;
   -webkit-background-clip: text;
@@ -72,24 +111,19 @@ html {
   animation: shine 4s linear infinite;
 }
 
-/* === קלפים מהממים === */
-.card-glass {
-  @apply bg-white/80 backdrop-blur-md border border-white/60 shadow-lg shadow-blue-900/5 rounded-2xl;
-  transition: transform 0.2s, box-shadow 0.2s;
+/* === משטחים === */
+.card-glass, .card-elevated {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  box-shadow: 0 1px 2px rgba(17, 17, 20, 0.04), 0 8px 24px -16px rgba(17, 17, 20, 0.12);
+  transition: border-color 0.2s, transform 0.2s;
 }
-.card-glass:hover {
-  @apply shadow-xl shadow-blue-900/10;
-  transform: translateY(-2px);
-}
+.card-glass:hover, .card-elevated:hover { border-color: var(--line-strong); transform: translateY(-1px); }
 .card-hot {
-  @apply bg-gradient-to-br from-orange-50 via-rose-50 to-amber-50 border-2 border-rose-200 shadow-lg shadow-rose-200/40 rounded-2xl;
-}
-.card-elevated {
-  @apply bg-white rounded-2xl border border-slate-200 shadow-md transition-all duration-200;
-}
-.card-elevated:hover {
-  @apply shadow-xl border-blue-200;
-  transform: translateY(-1px);
+  background: linear-gradient(180deg, rgba(244, 63, 94, 0.06), rgba(244, 63, 94, 0.01)), var(--surface);
+  border: 1px solid rgba(236, 111, 134, 0.28);
+  border-radius: 1.25rem;
 }
 
 /* === כפתורים מודרניים === */
@@ -126,10 +160,10 @@ html {
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(31, 78, 120, 0.2);
+  background: rgba(17, 17, 20, 0.12);
   border-radius: 4px;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(31, 78, 120, 0.4); }
+::-webkit-scrollbar-thumb:hover { background: rgba(17, 17, 20, 0.22); }
 
 /* === text utilities === */
 .text-balance { text-wrap: balance; }

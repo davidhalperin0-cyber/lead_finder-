@@ -78,7 +78,7 @@ export default function FollowUpPage() {
                   lead={L}
                   onDeleted={() => reload()}
                   primaryAction={{
-                    label: busy === id ? "..." : "✅ דיברתי",
+                    label: busy === id ? "..." : "דיברתי",
                     tone: "brand",
                     onClick: () =>
                       act(id, async () => {
@@ -88,7 +88,7 @@ export default function FollowUpPage() {
                   }}
                   secondaryActions={[
                     {
-                      label: "📞 לא ענה",
+                      label: "לא ענה",
                       tone: "slate",
                       onClick: () =>
                         act(id, () =>
@@ -96,7 +96,7 @@ export default function FollowUpPage() {
                         ),
                     },
                     {
-                      label: "📅 דחה",
+                      label: "דחה",
                       tone: "amber",
                       onClick: () => {
                         setEditFor(id);
@@ -106,7 +106,7 @@ export default function FollowUpPage() {
                       },
                     },
                     {
-                      label: "❌ לא מעוניין",
+                      label: "לא מעוניין",
                       tone: "rose",
                       onClick: () => act(id, () => quickStatus(id, "not_interested")),
                     },
@@ -120,7 +120,7 @@ export default function FollowUpPage() {
               </div>
 
               {editFor === id && (
-                <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50 p-3">
+                <div className="mt-2 rounded-2xl border border-line bg-slate-50 p-4">
                   <p className="text-sm font-medium text-amber-900">תאריך חדש לחזרה:</p>
                   <div className="mt-2 flex gap-2">
                     <input
@@ -132,7 +132,7 @@ export default function FollowUpPage() {
                     <button
                       type="button"
                       onClick={() => rescheduleSave(id)}
-                      className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-bold text-white"
+                      className="rounded-full btn-pearl px-4 py-2 text-sm"
                     >
                       שמור
                     </button>
@@ -155,14 +155,14 @@ export default function FollowUpPage() {
 
   return (
     <div className="space-y-4 pb-4">
-      <header className="flex items-end justify-between gap-2">
+      <header className="mb-3 flex items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold">⏰ צריך לחזור אליהם</h1>
-          <p className="text-xs text-slate-500">
+          <h1 className="text-[2rem] font-light leading-tight tracking-tight text-paper sm:text-[2.5rem]">צריך לחזור אליהם</h1>
+          <p className="mt-1 text-[15px] text-slate-600">
             לידים עם תאריך חזרה — קודם איחורים, אחרי זה היום
           </p>
         </div>
-        <span className="rounded bg-amber-100 px-2 py-0.5 text-sm font-bold text-amber-700">
+        <span className="chip tabular-nums">
           {leads.length}
         </span>
       </header>
@@ -170,8 +170,8 @@ export default function FollowUpPage() {
       {loading && <p className="text-sm text-slate-500">טוען…</p>}
 
       {!loading && leads.length === 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
-          <p className="text-base font-bold text-slate-800">אין מעקבים פתוחים 🎉</p>
+        <div className="rounded-[1.25rem] border border-line bg-white p-6 text-center">
+          <p className="text-base font-bold text-slate-800">אין מעקבים פתוחים </p>
           <p className="mt-1 text-sm text-slate-500">כל המעקבים סגורים. כל הכבוד!</p>
         </div>
       )}
@@ -179,7 +179,7 @@ export default function FollowUpPage() {
       {groups.overdue.length > 0 && (
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-rose-700">🚨 באיחור</h2>
+            <h2 className="text-base font-bold text-rose-700">באיחור</h2>
             <span className="text-xs text-rose-700">{groups.overdue.length}</span>
           </div>
           {renderList(groups.overdue)}
@@ -189,7 +189,7 @@ export default function FollowUpPage() {
       {groups.todayList.length > 0 && (
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-amber-700">📞 היום</h2>
+            <h2 className="text-base font-bold text-amber-700">היום</h2>
             <span className="text-xs text-amber-700">{groups.todayList.length}</span>
           </div>
           {renderList(groups.todayList)}
@@ -199,7 +199,7 @@ export default function FollowUpPage() {
       {groups.future.length > 0 && (
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-700">📅 בהמשך</h2>
+            <h2 className="text-base font-bold text-slate-700">בהמשך</h2>
             <span className="text-xs text-slate-700">{groups.future.length}</span>
           </div>
           {renderList(groups.future)}

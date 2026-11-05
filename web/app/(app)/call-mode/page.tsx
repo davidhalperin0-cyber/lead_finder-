@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import { quickStatus, patchLead, logActivity } from "../_components/useLeads";
 import { TrustBadgeSmall } from "../_components/TrustBadge";
 import CallBriefCard, { fetchCallBrief, type CallBrief } from "../_components/CallBriefCard";
+import DemoLink from "../_components/DemoLink";
+import { Icon, Panel, btn } from "../_components/ui";
 
 type Lead = Record<string, unknown> & { id: string };
 
@@ -44,7 +46,7 @@ function detectSocialPlatform(url: string): {
     const handle = url.split("instagram.com/")[1]?.split("/")[0]?.split("?")[0] || "";
     return {
       platform: "instagram",
-      emoji: "📸",
+      emoji: "",
       label: "Instagram DM",
       dmUrl: handle ? `https://www.instagram.com/${handle}/` : url,
       bgClass: "bg-gradient-to-r from-pink-500 to-orange-500",
@@ -54,7 +56,7 @@ function detectSocialPlatform(url: string): {
     const handle = url.split("facebook.com/")[1]?.split("/")[0]?.split("?")[0] || "";
     return {
       platform: "facebook",
-      emoji: "💬",
+      emoji: "",
       label: "Messenger",
       dmUrl: handle && !handle.includes(".") ? `https://m.me/${handle}` : url,
       bgClass: "bg-gradient-to-r from-blue-600 to-blue-700",
@@ -63,7 +65,7 @@ function detectSocialPlatform(url: string): {
   if (u.includes("google.com/maps") || u.includes("maps.google")) {
     return {
       platform: "gmaps",
-      emoji: "🗺️",
+      emoji: "",
       label: "Google Maps",
       dmUrl: url,
       bgClass: "bg-gradient-to-r from-emerald-600 to-teal-600",
@@ -200,17 +202,12 @@ export default function CallModePage() {
   // אין מי לחייג
   if (queue.length === 0) {
     return (
-      <div className="card-elevated p-8 text-center mt-8 animate-fadeIn">
-        <p className="text-5xl mb-3">📞</p>
-        <h1 className="text-xl font-bold">אין לידים לחיוג</h1>
-        <p className="text-sm text-slate-500 mt-2">
-          אין לידים פעילים עם טלפון. בואי נחפש כמה!
-        </p>
-        <Link
-          href="/search"
-          className="mt-4 inline-block rounded-xl bg-gradient-brand px-5 py-2.5 text-sm font-bold text-white btn-pop"
-        >
-          🔍 חיפוש חדש
+      <div className="mt-8 rounded-[1.25rem] border border-line bg-white p-10 text-center animate-fadeIn">
+        <h1 className="text-[2rem] font-light tracking-tight text-paper">אין לידים לחיוג</h1>
+        <p className="mt-2 text-sm text-slate-600">אין כרגע לידים פעילים עם טלפון. חיפוש חדש ימלא את התור.</p>
+        <Link href="/search" className={`${btn.primary} mt-6`}>
+          <Icon name="search" />
+          חיפוש לידים
         </Link>
       </div>
     );
@@ -219,217 +216,171 @@ export default function CallModePage() {
   // סיימנו את כל התור
   if (idx >= queue.length) {
     return (
-      <div className="card-elevated p-8 text-center mt-8 animate-scaleIn">
-        <p className="text-6xl mb-3">🎉</p>
-        <h1 className="text-2xl font-bold text-emerald-700">סיימת את כל הלידים!</h1>
-        <p className="text-sm text-slate-600 mt-2">כל הכבוד 💪</p>
-        <div className="mt-6 grid grid-cols-3 gap-3 text-center">
-          <div className="rounded-xl bg-blue-50 p-3">
-            <div className="text-2xl font-bold text-blue-700">{stats.done}</div>
-            <div className="text-xs text-blue-700">שיחות</div>
-          </div>
-          <div className="rounded-xl bg-emerald-50 p-3">
-            <div className="text-2xl font-bold text-emerald-700">{stats.interested}</div>
-            <div className="text-xs text-emerald-700">מתעניינים</div>
-          </div>
-          <div className="rounded-xl bg-amber-50 p-3">
-            <div className="text-2xl font-bold text-amber-700">{stats.no_answer}</div>
-            <div className="text-xs text-amber-700">לא ענו</div>
-          </div>
+      <div className="mt-8 rounded-[1.25rem] border border-line bg-white p-10 text-center animate-scaleIn">
+        <h1 className="text-[2rem] font-light tracking-tight text-paper">סיימת את כל התור</h1>
+        <p className="mt-2 text-sm text-slate-600">כל הכבוד. ככה נראה הסבב:</p>
+        <div className="mx-auto mt-6 grid max-w-sm grid-cols-3 divide-x divide-x-reverse divide-line">
+          {[
+            ["שיחות", stats.done],
+            ["מתעניינים", stats.interested],
+            ["לא ענו", stats.no_answer],
+          ].map(([l, v]) => (
+            <div key={l as string} className="px-2">
+              <div className="text-3xl font-light tabular-nums text-paper">{v}</div>
+              <div className="mt-1 text-xs text-slate-500">{l}</div>
+            </div>
+          ))}
         </div>
-        <button
-          onClick={load}
-          className="mt-6 rounded-xl bg-gradient-brand px-5 py-2.5 text-sm font-bold text-white btn-pop"
-        >
-          🔄 רענן וחזור
+        <button onClick={load} className={`${btn.primary} mt-8`}>
+          <Icon name="refresh" />
+          לטעון שוב את התור
         </button>
       </div>
     );
   }
 
 
+  const social = detectSocialPlatform(String(current.social_url || ""));
+  const outcomeBtn =
+    "flex items-center justify-center gap-2 rounded-2xl border border-line bg-white py-4 text-[15px] transition-colors disabled:opacity-40";
+
   return (
-    <div className="space-y-3 pb-6 animate-fadeIn">
-      {/* פס התקדמות */}
-      <div className="rounded-2xl bg-gradient-brand p-4 text-white shadow-soft">
-        <div className="flex items-center justify-between text-sm">
-          <span className="font-semibold">📞 מצב חיוג</span>
-          <span className="opacity-90">
-            {idx + 1} / {queue.length}
+    <div className="space-y-4 pb-6 animate-fadeIn">
+      {/* התקדמות: שורה אחת שקטה */}
+      <div>
+        <div className="flex items-center justify-between text-xs text-slate-500">
+          <span>
+            ליד <span className="tabular-nums text-paper">{idx + 1}</span> מתוך <span className="tabular-nums">{queue.length}</span>
+          </span>
+          <span className="tabular-nums">
+            {stats.interested} מעוניינים · {stats.no_answer} לא ענו · נשארו {remaining}
           </span>
         </div>
-        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/20">
-          <div
-            className="h-full rounded-full bg-white transition-all"
-            style={{ width: `${((idx + 1) / queue.length) * 100}%` }}
-          />
-        </div>
-        <div className="mt-2 flex justify-between text-xs opacity-90">
-          <span>🔥 {stats.interested} מעוניינים</span>
-          <span>📵 {stats.no_answer} לא ענו</span>
-          <span>נשארו {remaining}</span>
+        <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-slate-100">
+          <div className="h-full rounded-full transition-all" style={{ width: `${((idx + 1) / queue.length) * 100}%`, background: "var(--pearl)" }} />
         </div>
       </div>
 
-      {/* כרטיס הליד הנוכחי */}
-      <div className="card-elevated overflow-hidden animate-scaleIn">
-        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-5 border-b border-blue-100">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h2 className="text-2xl font-extrabold text-slate-900 leading-tight">
-                {String(current.business_name || "ללא שם")}
-              </h2>
-              <p className="mt-1 text-sm text-slate-600">
-                {String(current.search_city || "")}
-                {current.search_business_type ? " · " + current.search_business_type : ""}
-              </p>
+      {/* הליד: שם, טלפון, ואז חיוג */}
+      <Panel className="animate-scaleIn">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-[1.75rem] font-light leading-tight tracking-tight text-paper sm:text-[2.25rem]">
+              {String(current.business_name || "ללא שם")}
+            </h1>
+            <p className="mt-1.5 text-sm text-slate-500">
+              {[current.search_city, current.search_business_type].filter(Boolean).map(String).join(" · ")}
+            </p>
+            <div className="mt-2">
+              <TrustBadgeSmall lead={current} />
             </div>
-            {Boolean(current.no_website) && (
-              <span className="shrink-0 rounded-lg bg-amber-200 px-2 py-1 text-xs font-bold text-amber-900">
-                🔥 בלי אתר
-              </span>
-            )}
           </div>
-          {/* סימן אמינות - מאיפה הליד הזה הגיע */}
-          <div className="mt-2">
-            <TrustBadgeSmall lead={current} />
-          </div>
-          <p className="mt-3 text-2xl font-bold text-emerald-700 tracking-wider">
-            📞 {phone}
-          </p>
-          {/* כפתור הודעה ישירה ב-Instagram/Facebook אם רלוונטי */}
-          {(() => {
-            const social = detectSocialPlatform(String(current.social_url || ""));
-            if (!social) return null;
-            return (
-              <a
-                href={social.dmUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`mt-2 block ${social.bgClass} rounded-xl px-4 py-2.5 text-center text-sm font-bold text-white shadow-md btn-pop`}
-              >
-                {social.emoji} שליחת הודעה ב-{social.label}
-              </a>
-            );
-          })()}
+          {Boolean(current.no_website) && <span className="chip shrink-0">בלי אתר</span>}
         </div>
 
-        {/* הכנה + תסריט מותאם לעסק הזה */}
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center">
+          {tel && (
+            <a href={tel} className={`${btn.primary} py-3.5 text-base sm:flex-1`}>
+              <Icon name="phone" />
+              <span dir="ltr" className="tabular-nums tracking-wide">{phone}</span>
+            </a>
+          )}
+          {social && (
+            <a href={social.dmUrl} target="_blank" rel="noopener noreferrer" className={`${btn.secondary} py-3.5`}>
+              <Icon name="chat" />
+              {social.label}
+            </a>
+          )}
+        </div>
+      </Panel>
+
+      {/* הכנה לשיחה + דוגמת אתר */}
+      <section className="overflow-hidden rounded-[1.25rem] border border-line bg-white">
         <CallBriefCard
           key={String(current.id)}
           leadId={String(current.id)}
           initial={(current.call_brief as CallBrief | null) || null}
         />
+        <DemoLink
+          key={"demo-" + String(current.id)}
+          leadId={String(current.id)}
+          name={String(current.business_name || "")}
+          phone={String(current.whatsapp || current.phone || "")}
+          hasDemo={Boolean((current.call_brief as { demo?: unknown } | null)?.demo)}
+        />
+      </section>
 
-        {/* כפתור חיוג ענק */}
-        {tel && (
-          <a
-            href={tel}
-            className="block bg-gradient-success p-5 text-center text-white text-xl font-bold shadow-lg btn-pop animate-pulseGlow"
-          >
-            📞 חייגי עכשיו
-          </a>
-        )}
-
-        {/* פאנל פעולות אחרי שיחה */}
-        {!postpone ? (
-          <div className="p-4 space-y-2 bg-slate-50">
-            <p className="text-xs text-center font-bold text-slate-500 mb-1">
-              איך הלכה השיחה?
-            </p>
-            <button
-              onClick={markInterested}
-              disabled={busy}
-              className="w-full rounded-xl bg-gradient-success py-3 text-base font-bold text-white btn-pop disabled:opacity-50 shadow-md"
-            >
-              ✅ דיברתי + הוא מעוניין
+      {/* אחרי השיחה */}
+      {!postpone ? (
+        <Panel title="איך הלכה השיחה?">
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={markInterested} disabled={busy} className={`${outcomeBtn} col-span-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50`}>
+              <Icon name="check" />
+              מעוניין, להמשיך איתו
             </button>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={markNoAnswer}
-                disabled={busy}
-                className="rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-white btn-pop disabled:opacity-50"
-              >
-                📵 לא ענה
-              </button>
-              <button
-                onClick={() => setPostpone(true)}
-                disabled={busy}
-                className="rounded-xl bg-blue-500 py-2.5 text-sm font-bold text-white btn-pop disabled:opacity-50"
-              >
-                📅 קבעתי לחזור
-              </button>
-            </div>
-            <button
-              onClick={markNotInterested}
-              disabled={busy}
-              className="w-full rounded-xl bg-rose-500 py-2.5 text-sm font-bold text-white btn-pop disabled:opacity-50"
-            >
-              ❌ לא מעוניין
+            <button onClick={markNoAnswer} disabled={busy} className={`${outcomeBtn} text-slate-800 hover:border-slate-400`}>
+              לא ענה
             </button>
-            <button
-              onClick={nextLead}
-              className="w-full rounded-xl border border-slate-300 py-2 text-sm text-slate-600 btn-pop"
-            >
-              ⏭️ דלגי בלי לעדכן
+            <button onClick={() => setPostpone(true)} disabled={busy} className={`${outcomeBtn} text-slate-800 hover:border-slate-400`}>
+              <Icon name="calendar" size={16} />
+              לחזור אליו
+            </button>
+            <button onClick={markNotInterested} disabled={busy} className={`${outcomeBtn} col-span-2 text-rose-700 hover:border-rose-300`}>
+              לא מעוניין
             </button>
           </div>
-        ) : (
-          <div className="p-4 space-y-2 bg-blue-50">
-            <p className="text-sm font-bold text-blue-900">📅 מתי לחזור?</p>
-            <input
-              type="date"
-              value={postponeDate}
-              onChange={(e) => setPostponeDate(e.target.value)}
-              min={todayISO()}
-              className="w-full rounded-lg border border-blue-300 px-3 py-2 text-sm"
-            />
-            <div className="flex gap-2">
-              {[
-                { l: "מחר", d: 1 },
-                { l: "+3 ימים", d: 3 },
-                { l: "שבוע", d: 7 },
-                { l: "2 שבועות", d: 14 },
-              ].map((q) => (
+          <div className="mt-3 flex items-center justify-between">
+            <button onClick={nextLead} className={btn.ghost}>
+              לדלג בלי לעדכן
+              <Icon name="chevron" size={16} />
+            </button>
+            <Link href={`/leads/${current.id}`} className={btn.ghost}>
+              כל הפרטים
+            </Link>
+          </div>
+        </Panel>
+      ) : (
+        <Panel title="מתי לחזור אליו?">
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { l: "מחר", d: 1 },
+              { l: "עוד 3 ימים", d: 3 },
+              { l: "שבוע", d: 7 },
+              { l: "שבועיים", d: 14 },
+            ].map((q) => {
+              const d = new Date();
+              d.setDate(d.getDate() + q.d);
+              const iso = d.toISOString().slice(0, 10);
+              const on = postponeDate === iso;
+              return (
                 <button
                   key={q.d}
-                  onClick={() => {
-                    const d = new Date();
-                    d.setDate(d.getDate() + q.d);
-                    setPostponeDate(d.toISOString().slice(0, 10));
-                  }}
-                  className="flex-1 rounded-lg bg-white border border-blue-200 py-1.5 text-xs font-semibold text-blue-700"
+                  onClick={() => setPostponeDate(iso)}
+                  className={`rounded-full py-2 text-xs transition-colors ${on ? "bg-paper text-ink" : "border border-line text-slate-700 hover:text-paper"}`}
                 >
                   {q.l}
                 </button>
-              ))}
-            </div>
-            <div className="flex gap-2 pt-1">
-              <button
-                onClick={() => setPostpone(false)}
-                className="flex-1 rounded-xl bg-slate-200 py-2 text-sm font-bold text-slate-700 btn-pop"
-              >
-                ביטול
-              </button>
-              <button
-                onClick={applyPostpone}
-                disabled={busy || !postponeDate}
-                className="flex-1 rounded-xl bg-gradient-brand py-2 text-sm font-bold text-white btn-pop disabled:opacity-50"
-              >
-                שמור והבא ←
-              </button>
-            </div>
+              );
+            })}
           </div>
-        )}
-      </div>
-
-      {/* קישור פרטים מלאים */}
-      <Link
-        href={`/leads/${current.id}`}
-        className="block text-center text-xs text-slate-500 underline"
-      >
-        פתיחת פרטים מלאים של הליד
-      </Link>
+          <input
+            type="date"
+            value={postponeDate}
+            onChange={(e) => setPostponeDate(e.target.value)}
+            min={todayISO()}
+            aria-label="תאריך לחזרה"
+            className="mt-3 w-full rounded-xl border border-line px-3.5 py-2.5 text-sm"
+          />
+          <div className="mt-4 flex gap-2">
+            <button onClick={() => setPostpone(false)} className={`${btn.secondary} flex-1`}>
+              ביטול
+            </button>
+            <button onClick={applyPostpone} disabled={busy || !postponeDate} className={`${btn.primary} flex-1`}>
+              לשמור ולעבור לבא
+            </button>
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }

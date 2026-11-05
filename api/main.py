@@ -512,6 +512,8 @@ def make_call_brief(lead_id: str, force: bool = Query(False), user_id: str = Dep
     except Exception as e:
         raise HTTPException(502, f"ההכנה נכשלה: {e}")
 
+    if cached and cached.get("demo"):
+        brief["demo"] = cached["demo"]  # הדוגמה שכבר נשלחה ללקוח נשארת
     upd = cb.brief_to_legacy_fields(brief)
     upd["call_brief"] = brief
     upd["call_brief_at"] = datetime.now(timezone.utc).isoformat()
@@ -524,6 +526,41 @@ def make_call_brief(lead_id: str, force: bool = Query(False), user_id: str = Dep
         upd.pop("call_brief_at", None)
         sb.table("leads").update(upd).eq("id", lead_id).eq("user_id", user_id).execute()
     return brief
+
+
+@app.post("/api/leads/{lead_id}/demo")
+def make_demo(lead_id: str, force: bool = Query(False), user_id: str = Depends(verify_user)):
+    """בונה דוגמת אתר לליד (נשמרת בתוך call_brief) ומחזיר את הנתונים."""
+    import demo as dm
+
+    sb = _sb()
+    r = sb.table("leads").select("*").eq("id", lead_id).eq("user_id", user_id).limit(1).execute()
+    rows = getattr(r, "data", None) or []
+    if not rows:
+        raise HTTPException(404, "לא נמצא")
+    lead = rows[0]
+    brief = lead.get("call_brief") or {}
+    if brief.get("demo") and brief["demo"].get("v") == dm.DEMO_VERSION and not force:
+        return brief["demo"]
+    data = dm.build_demo(lead)
+    if not data.get("name"):
+        raise HTTPException(502, "לא מצאתי את העסק בגוגל")
+    brief["demo"] = data
+    sb.table("leads").update({"call_brief": brief}).eq("id", lead_id).eq("user_id", user_id).execute()
+    return data
+
+
+@app.get("/api/demo/{lead_id}")
+def public_demo(lead_id: str):
+    """ציבורי, בלי התחברות: רק לידים שהמוכרת יצרה להם דוגמה."""
+    if not re.fullmatch(r"[0-9a-f-]{36}", lead_id or ""):
+        raise HTTPException(404, "לא נמצא")
+    r = _sb().table("leads").select("call_brief").eq("id", lead_id).limit(1).execute()
+    rows = getattr(r, "data", None) or []
+    data = ((rows[0].get("call_brief") or {}).get("demo") if rows else None)
+    if not data:
+        raise HTTPException(404, "לא נמצא")
+    return data
 
 
 class LeadPatch(BaseModel):
